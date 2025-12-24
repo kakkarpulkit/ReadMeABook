@@ -96,11 +96,12 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Check if user already has an active request for this audiobook
+      // Check if user already has an active (non-deleted) request for this audiobook
       const existingRequest = await prisma.request.findFirst({
         where: {
           userId: req.user.id,
           audiobookId: audiobookRecord.id,
+          deletedAt: null, // Only check active requests
         },
       });
 

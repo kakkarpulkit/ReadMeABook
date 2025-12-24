@@ -43,6 +43,7 @@ export function InteractiveTorrentSearchModal({
 
   const [results, setResults] = useState<(TorrentResult & { rank: number; qualityScore?: number })[]>([]);
   const [confirmTorrent, setConfirmTorrent] = useState<TorrentResult | null>(null);
+  const [searchTitle, setSearchTitle] = useState(audiobook.title);
 
   // Determine which mode we're in
   const hasRequestId = !!requestId;
@@ -52,6 +53,12 @@ export function InteractiveTorrentSearchModal({
     ? (searchByRequestError || selectTorrentError)
     : (searchByAudiobookError || requestWithTorrentError);
 
+  // Reset search title when modal opens/closes or audiobook changes
+  React.useEffect(() => {
+    setSearchTitle(audiobook.title);
+    setResults([]);
+  }, [isOpen, audiobook.title]);
+
   // Perform search when modal opens
   React.useEffect(() => {
     if (isOpen && results.length === 0) {
@@ -60,19 +67,28 @@ export function InteractiveTorrentSearchModal({
   }, [isOpen]);
 
   const performSearch = async () => {
+    // Clear existing results while searching
+    setResults([]);
+
     try {
       let data;
       if (hasRequestId) {
-        // Existing flow: search by requestId
+        // Existing flow: search by requestId (cannot customize search term)
         data = await searchByRequestId(requestId);
       } else {
-        // New flow: search by audiobook title/author
-        data = await searchByAudiobook(audiobook.title, audiobook.author);
+        // New flow: search by custom title + original author
+        data = await searchByAudiobook(searchTitle, audiobook.author);
       }
       setResults(data || []);
     } catch (err) {
       // Error already handled by hook
       console.error('Search failed:', err);
+    }
+  };
+
+  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      performSearch();
     }
   };
 
@@ -124,10 +140,42 @@ export function InteractiveTorrentSearchModal({
     <>
       <Modal isOpen={isOpen} onClose={onClose} title="Select Torrent" size="full">
         <div className="space-y-4">
-          {/* Audiobook info */}
+          {/* Search customization */}
           <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100">{audiobook.title}</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">By {audiobook.author}</p>
+            {hasRequestId ? (
+              // Existing request: show static title (cannot customize)
+              <>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100">{audiobook.title}</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">By {audiobook.author}</p>
+              </>
+            ) : (
+              // New search: allow title customization
+              <>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Search Title
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={searchTitle}
+                    onChange={(e) => setSearchTitle(e.target.value)}
+                    onKeyPress={handleSearchKeyPress}
+                    placeholder="Enter book title to search..."
+                    disabled={isSearching}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+                  />
+                  <Button
+                    onClick={performSearch}
+                    disabled={isSearching || !searchTitle.trim()}
+                    variant="primary"
+                    size="sm"
+                  >
+                    Search
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">By {audiobook.author}</p>
+              </>
+            )}
           </div>
 
           {/* Error message */}

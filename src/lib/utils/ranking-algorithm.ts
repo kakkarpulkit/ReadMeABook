@@ -201,10 +201,26 @@ export class RankingAlgorithm {
     // Title matching (0-35 points)
     let titleScore = 0;
     if (torrentTitle.includes(requestTitle)) {
-      // Exact substring match → full points
-      titleScore = 35;
+      // Found the title, but is it the complete title or part of a longer one?
+      const titleIndex = torrentTitle.indexOf(requestTitle);
+      const afterTitle = torrentTitle.substring(titleIndex + requestTitle.length);
+
+      // Title is complete if followed by clear metadata markers
+      // (not followed by more title words like "'s Secret" or " Is Watching")
+      const metadataMarkers = [' by ', ' - ', ' [', ' (', ' {', ' :', ','];
+      const isCompleteTitle = afterTitle === '' ||
+                              metadataMarkers.some(marker => afterTitle.startsWith(marker));
+
+      if (isCompleteTitle) {
+        // Complete title match → full points
+        titleScore = 35;
+      } else {
+        // Title continues with more words (e.g., "The Housemaid" + "'s Secret")
+        // This is likely a different book in a series → use fuzzy similarity
+        titleScore = compareTwoStrings(requestTitle, torrentTitle) * 35;
+      }
     } else {
-      // No exact match → use fuzzy similarity for partial credit
+      // No substring match at all → use fuzzy similarity
       titleScore = compareTwoStrings(requestTitle, torrentTitle) * 35;
     }
 

@@ -8,12 +8,15 @@ Evaluates and scores torrents to automatically select best audiobook download.
 
 **1. Title/Author Match (50 pts max) - MOST IMPORTANT**
 - Title matching: 0-35 pts
-  - Exact substring match → 35 pts
+  - Complete title match (followed by metadata: " by", " [", " -") → 35 pts
+  - Title is substring but continues with more words → fuzzy similarity (partial credit)
+  - Prevents series confusion: "The Housemaid" vs "The Housemaid's Secret"
   - No exact match → fuzzy similarity (partial credit)
 - Author presence: 0-15 pts
+  - Exact substring match → proportional credit
+  - No exact match → fuzzy similarity (partial credit)
   - Splits authors on delimiters (comma, &, "and", " - ")
   - Filters out roles ("translator", "narrator")
-  - Proportional credit for partial matches
 - Order-independent, no structure assumptions
 - Ensures correct book is selected over wrong book with better format
 
