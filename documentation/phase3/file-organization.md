@@ -11,10 +11,20 @@ Target directory read from database config `media_dir` (configurable in setup wi
 ```
 [media_dir]/
 └── Author Name/
-    └── Book Title (Year)/
+    └── Book Title (Year) ASIN/
         ├── Book Title.m4b
         └── cover.jpg
 ```
+
+**Folder naming format:**
+- With year and ASIN: `Book Title (Year) ASIN`
+- With ASIN only: `Book Title ASIN`
+- With year only: `Book Title (Year)`
+- Fallback: `Book Title`
+
+**Example:** `Douglas Adams/The Hitchhiker's Guide to the Galaxy (2005) B0009JKV9W/`
+
+**Rationale:** Including ASIN in folder name improves Plex/Audnexus agent matching accuracy.
 
 Default: `/media/audiobooks/` (if not configured)
 
@@ -23,9 +33,9 @@ Default: `/media/audiobooks/` (if not configured)
 1. Download completes in `/downloads/[torrent-name]/` or `/downloads/[filename]` (single file)
 2. Identify audiobook files (.m4b, .m4a, .mp3) - supports both directories and single files
 3. Read media directory from database config `media_dir`
-4. Create `[media_dir]/[Author]/[Title]/`
+4. Create `[media_dir]/[Author]/[Title (Year) ASIN]/`
 5. **Copy** files (not move - originals stay for seeding)
-6. **Tag metadata** (if enabled) - writes correct title, author, narrator to audio files
+6. **Tag metadata** (if enabled) - writes correct title, author, narrator, ASIN to audio files
 7. Copy cover art if found, else download from Audible
 8. Originals remain until seeding requirements met
 
@@ -46,6 +56,18 @@ Default: `/media/audiobooks/` (if not configured)
 - `artist` - Author (fallback)
 - `composer` - Narrator (standard audiobook field)
 - `date` - Year
+- `ASIN` - Audible ASIN (custom tag)
+  - M4B/M4A/MP4: `----:com.apple.iTunes:ASIN`
+  - MP3: Custom ID3v2 tag
+
+**Note:** ASIN is a custom metadata tag and may not appear in standard file properties viewers (Windows/macOS/Linux). Use specialized tools to verify:
+```bash
+# Verify ASIN metadata with ffprobe
+ffprobe -v quiet -print_format json -show_format "audiobook.m4b" | grep -i asin
+
+# Or use exiftool
+exiftool "audiobook.m4b" | grep -i asin
+```
 
 **Configuration:**
 - Key: `metadata_tagging_enabled` (Configuration table)
@@ -65,6 +87,7 @@ Default: `/media/audiobooks/` (if not configured)
 - Ensures Plex can match audiobooks correctly
 - Writes metadata from Audible/Audnexus (known accurate)
 - Prevents "[Various Albums]" and other metadata issues
+- Embeds ASIN directly in audio files for better identification and matching
 
 **Tech Stack:**
 - ffmpeg (system dependency - included in Docker image)
@@ -103,7 +126,7 @@ interface OrganizationResult {
 
 async function organize(
   downloadPath: string,
-  audiobook: {title: string, author: string, year?: number, coverArtUrl?: string}
+  audiobook: {title: string, author: string, year?: number, coverArtUrl?: string, asin?: string}
 ): Promise<OrganizationResult>;
 ```
 

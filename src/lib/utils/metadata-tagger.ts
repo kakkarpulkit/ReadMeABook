@@ -15,6 +15,7 @@ export interface MetadataTaggingOptions {
   author: string;
   narrator?: string;
   year?: number;
+  asin?: string;
 }
 
 export interface TaggingResult {
@@ -76,6 +77,11 @@ export async function tagAudioFileMetadata(
         args.push('-metadata', `date="${metadata.year}"`);
       }
 
+      if (metadata.asin) {
+        // Use custom iTunes tag format for M4B/M4A/MP4 files
+        args.push('-metadata', `----:com.apple.iTunes:ASIN="${escapeMetadata(metadata.asin)}"`);
+      }
+
       // Explicitly specify output format (fixes .tmp extension issue)
       args.push('-f', 'mp4');
     }
@@ -95,6 +101,11 @@ export async function tagAudioFileMetadata(
 
       if (metadata.year) {
         args.push('-metadata', `date="${metadata.year}"`);
+      }
+
+      if (metadata.asin) {
+        // Use TXXX frame for custom ID3v2 tags in MP3 files
+        args.push('-metadata', `ASIN="${escapeMetadata(metadata.asin)}"`);
       }
 
       // Explicitly specify output format (fixes .tmp extension issue)

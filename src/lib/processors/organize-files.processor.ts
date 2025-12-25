@@ -54,6 +54,7 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
         author: audiobook.author,
         narrator: audiobook.narrator || undefined,
         coverArtUrl: audiobook.coverArtUrl || undefined,
+        asin: audiobook.audibleAsin || undefined,
       },
       jobId ? { jobId, context: 'FileOrganizer' } : undefined
     );

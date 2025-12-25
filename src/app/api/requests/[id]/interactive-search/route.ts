@@ -12,6 +12,7 @@ import { rankTorrents } from '@/lib/utils/ranking-algorithm';
 /**
  * POST /api/requests/[id]/interactive-search
  * Search for torrents and return results for user selection
+ * Body (optional): { customTitle?: string }
  */
 export async function POST(
   request: NextRequest,
@@ -27,6 +28,15 @@ export async function POST(
       }
 
       const { id } = await params;
+
+      // Parse optional request body
+      let customTitle: string | undefined;
+      try {
+        const body = await req.json();
+        customTitle = body.customTitle;
+      } catch (e) {
+        // No body or invalid JSON - that's okay, customTitle will be undefined
+      }
 
       const requestRecord = await prisma.request.findUnique({
         where: { id },
@@ -74,9 +84,13 @@ export async function POST(
 
       // Search Prowlarr for torrents - ONLY enabled indexers
       const prowlarr = await getProwlarrService();
-      const searchQuery = requestRecord.audiobook.title; // Title only - cast wide net
+      // Use custom title if provided, otherwise use audiobook's title
+      const searchQuery = customTitle || requestRecord.audiobook.title;
 
       console.log(`[InteractiveSearch] Searching ${enabledIndexerIds.length} enabled indexers for: ${searchQuery}`);
+      if (customTitle) {
+        console.log(`[InteractiveSearch] Using custom search title (original: "${requestRecord.audiobook.title}")`);
+      }
 
       const results = await prowlarr.search(searchQuery, {
         indexerIds: enabledIndexerIds,
@@ -94,6 +108,7 @@ export async function POST(
       }
 
       // Rank torrents using the ranking algorithm
+      // Always use the audiobook's title/author for ranking (not custom search query)
       const rankedResults = rankTorrents(results, {
         title: requestRecord.audiobook.title,
         author: requestRecord.audiobook.author,
@@ -108,8 +123,9 @@ export async function POST(
       const top3 = filteredResults.slice(0, 3);
       if (top3.length > 0) {
         console.log(`[InteractiveSearch] ==================== RANKING DEBUG ====================`);
-        console.log(`[InteractiveSearch] Requested Title: "${requestRecord.audiobook.title}"`);
-        console.log(`[InteractiveSearch] Requested Author: "${requestRecord.audiobook.author}"`);
+        console.log(`[InteractiveSearch] Search Query: "${searchQuery}"`);
+        console.log(`[InteractiveSearch] Requested Title (for ranking): "${requestRecord.audiobook.title}"`);
+        console.log(`[InteractiveSearch] Requested Author (for ranking): "${requestRecord.audiobook.author}"`);
         console.log(`[InteractiveSearch] Top ${top3.length} results (out of ${filteredResults.length} above threshold):`);
         console.log(`[InteractiveSearch] --------------------------------------------------------`);
         top3.forEach((result, index) => {

@@ -12,6 +12,9 @@ export async function GET() {
     const configService = new ConfigurationService();
     const backendMode = await configService.get('system.backend_mode');
 
+    // Check if local login is disabled via environment variable
+    const localLoginDisabled = process.env.DISABLE_LOCAL_LOGIN === 'true';
+
     if (backendMode === 'audiobookshelf') {
       // Audiobookshelf mode - check which auth methods are enabled
       const oidcEnabled = (await configService.get('oidc.enabled')) === 'true';
@@ -25,14 +28,16 @@ export async function GET() {
 
       const providers: string[] = [];
       if (oidcEnabled) providers.push('oidc');
-      if (hasLocalUsers) providers.push('local');
+      // Only add 'local' provider if not disabled and users exist
+      if (hasLocalUsers && !localLoginDisabled) providers.push('local');
 
       return NextResponse.json({
         backendMode: 'audiobookshelf',
         providers,
-        registrationEnabled,
+        registrationEnabled: !localLoginDisabled && registrationEnabled,
         hasLocalUsers,
         oidcProviderName: oidcEnabled ? oidcProviderName : null,
+        localLoginDisabled,
       });
     } else {
       // Plex mode - check if local admin exists (setup admin)
@@ -49,17 +54,20 @@ export async function GET() {
         registrationEnabled: false,
         hasLocalUsers,
         oidcProviderName: null,
+        localLoginDisabled,
       });
     }
   } catch (error) {
     console.error('[Auth] Failed to fetch auth providers:', error);
     // Default to Plex mode if config can't be read
+    const localLoginDisabled = process.env.DISABLE_LOCAL_LOGIN === 'true';
     return NextResponse.json({
       backendMode: 'plex',
       providers: ['plex'],
       registrationEnabled: false,
       hasLocalUsers: false,
       oidcProviderName: null,
+      localLoginDisabled,
     });
   }
 }

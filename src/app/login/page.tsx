@@ -37,6 +37,7 @@ function LoginContent() {
     registrationEnabled: boolean;
     hasLocalUsers: boolean;
     oidcProviderName: string | null;
+    localLoginDisabled: boolean;
   } | null>(null);
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [registerUsername, setRegisterUsername] = useState('');
@@ -75,6 +76,7 @@ function LoginContent() {
           registrationEnabled: false,
           hasLocalUsers: false,
           oidcProviderName: null,
+          localLoginDisabled: false,
         });
       }
     };
@@ -727,7 +729,7 @@ function LoginContent() {
                 )}
 
                 {/* Admin Login toggle for Plex mode */}
-                {authProviders.providers.includes('plex') && !authProviders.providers.includes('local') && (
+                {authProviders.providers.includes('plex') && !authProviders.providers.includes('local') && !authProviders.localLoginDisabled && (
                   <>
                     <div className="relative my-6 sm:my-8">
                       <div className="absolute inset-0 flex items-center">

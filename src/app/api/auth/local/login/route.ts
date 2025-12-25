@@ -8,6 +8,14 @@ import { LocalAuthProvider } from '@/lib/services/auth/LocalAuthProvider';
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if local login is disabled
+    if (process.env.DISABLE_LOCAL_LOGIN === 'true') {
+      return NextResponse.json(
+        { error: 'Local login is disabled' },
+        { status: 403 }
+      );
+    }
+
     const { username, password } = await request.json();
 
     if (!username || !password) {

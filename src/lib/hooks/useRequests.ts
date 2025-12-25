@@ -216,7 +216,7 @@ export function useInteractiveSearch() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const searchTorrents = async (requestId: string) => {
+  const searchTorrents = async (requestId: string, customTitle?: string) => {
     if (!accessToken) {
       throw new Error('Not authenticated');
     }
@@ -227,6 +227,10 @@ export function useInteractiveSearch() {
     try {
       const response = await fetchWithAuth(`/api/requests/${requestId}/interactive-search`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: customTitle ? JSON.stringify({ customTitle }) : undefined,
       });
 
       const data = await response.json();

@@ -16,6 +16,7 @@ export interface AudiobookMetadata {
   narrator?: string;
   year?: number;
   coverArtUrl?: string;
+  asin?: string;
 }
 
 export interface OrganizationResult {
@@ -110,6 +111,7 @@ export class FileOrganizer {
               author: audiobook.author,
               narrator: audiobook.narrator,
               year: audiobook.year,
+              asin: audiobook.asin,
             });
 
             const successCount = taggingResults.filter((r) => r.success).length;
@@ -153,7 +155,8 @@ export class FileOrganizer {
         this.mediaDir,
         audiobook.author,
         audiobook.title,
-        audiobook.year
+        audiobook.year,
+        audiobook.asin
       );
 
       await logger?.info(`Target path: ${targetPath}`);
@@ -359,16 +362,28 @@ export class FileOrganizer {
 
   /**
    * Build target path with sanitized names
+   * Format: Author/Title (Year) ASIN or Author/Title ASIN or Author/Title (Year)
    */
   private buildTargetPath(
     baseDir: string,
     author: string,
     title: string,
-    year?: number
+    year?: number,
+    asin?: string
   ): string {
     const authorClean = this.sanitizePath(author);
     const titleClean = this.sanitizePath(title);
-    const folderName = year ? `${titleClean} (${year})` : titleClean;
+
+    // Build folder name with optional year and ASIN
+    let folderName = titleClean;
+
+    if (year) {
+      folderName = `${folderName} (${year})`;
+    }
+
+    if (asin) {
+      folderName = `${folderName} ${asin}`;
+    }
 
     return path.join(baseDir, authorClean, folderName);
   }

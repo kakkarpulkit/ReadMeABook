@@ -29,6 +29,14 @@ function checkRateLimit(ip: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  // Check if local login is disabled
+  if (process.env.DISABLE_LOCAL_LOGIN === 'true') {
+    return NextResponse.json(
+      { error: 'Local registration is disabled' },
+      { status: 403 }
+    );
+  }
+
   // Rate limiting
   const ip = request.headers.get('x-forwarded-for') || 'unknown';
   if (!checkRateLimit(ip)) {

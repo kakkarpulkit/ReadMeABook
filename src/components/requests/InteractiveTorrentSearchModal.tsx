@@ -73,8 +73,9 @@ export function InteractiveTorrentSearchModal({
     try {
       let data;
       if (hasRequestId) {
-        // Existing flow: search by requestId (cannot customize search term)
-        data = await searchByRequestId(requestId);
+        // Existing flow: search by requestId with optional custom title
+        const customTitle = searchTitle !== audiobook.title ? searchTitle : undefined;
+        data = await searchByRequestId(requestId, customTitle);
       } else {
         // New flow: search by custom title + original author
         data = await searchByAudiobook(searchTitle, audiobook.author);
@@ -140,42 +141,31 @@ export function InteractiveTorrentSearchModal({
     <>
       <Modal isOpen={isOpen} onClose={onClose} title="Select Torrent" size="full">
         <div className="space-y-4">
-          {/* Search customization */}
+          {/* Search customization - editable for ALL modes */}
           <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
-            {hasRequestId ? (
-              // Existing request: show static title (cannot customize)
-              <>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">{audiobook.title}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">By {audiobook.author}</p>
-              </>
-            ) : (
-              // New search: allow title customization
-              <>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Search Title
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={searchTitle}
-                    onChange={(e) => setSearchTitle(e.target.value)}
-                    onKeyPress={handleSearchKeyPress}
-                    placeholder="Enter book title to search..."
-                    disabled={isSearching}
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
-                  />
-                  <Button
-                    onClick={performSearch}
-                    disabled={isSearching || !searchTitle.trim()}
-                    variant="primary"
-                    size="sm"
-                  >
-                    Search
-                  </Button>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">By {audiobook.author}</p>
-              </>
-            )}
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Search Title
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={searchTitle}
+                onChange={(e) => setSearchTitle(e.target.value)}
+                onKeyPress={handleSearchKeyPress}
+                placeholder="Enter book title to search..."
+                disabled={isSearching}
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              />
+              <Button
+                onClick={performSearch}
+                disabled={isSearching || !searchTitle.trim()}
+                variant="primary"
+                size="sm"
+              >
+                Search
+              </Button>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">By {audiobook.author}</p>
           </div>
 
           {/* Error message */}
