@@ -2,12 +2,12 @@
 # Single container with PostgreSQL, Redis, and Next.js app
 # Designed for easy deployment with minimal configuration
 
-# Build arguments for version info
-ARG GIT_COMMIT=unknown
-ARG BUILD_DATE=unknown
-
 # Start from debian base with node preinstalled
 FROM node:20-bookworm AS base
+
+# Re-declare build arguments after FROM (ARGs before FROM are not available after)
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
 
 # Install PostgreSQL 16 repository key
 RUN apt-get update && apt-get install -y curl gnupg && \
