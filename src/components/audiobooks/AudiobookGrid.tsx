@@ -14,6 +14,25 @@ interface AudiobookGridProps {
   isLoading?: boolean;
   emptyMessage?: string;
   onRequestSuccess?: () => void;
+  cardSize?: number; // 1-9, default 5
+}
+
+// Helper function to get grid classes based on card size
+// IMPORTANT: Classes must be explicit strings (not template literals) for Tailwind purging
+function getGridClasses(size: number): string {
+  const sizeMap: Record<number, string> = {
+    1: 'grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10', // Smallest
+    2: 'grid-cols-3 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-9',
+    3: 'grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8',
+    4: 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7',
+    5: 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5', // Default
+    6: 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4',
+    7: 'grid-cols-2 md:grid-cols-3',
+    8: 'grid-cols-2',
+    9: 'grid-cols-1', // Largest
+  };
+
+  return sizeMap[size] || sizeMap[5];
 }
 
 export function AudiobookGrid({
@@ -21,10 +40,13 @@ export function AudiobookGrid({
   isLoading = false,
   emptyMessage = 'No audiobooks found',
   onRequestSuccess,
+  cardSize = 5,
 }: AudiobookGridProps) {
+  const gridClasses = getGridClasses(cardSize);
+
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 md:gap-6">
+      <div className={`grid ${gridClasses} gap-3 sm:gap-4 md:gap-6`}>
         {Array.from({ length: 8 }).map((_, i) => (
           <SkeletonCard key={i} />
         ))}
@@ -54,7 +76,7 @@ export function AudiobookGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 md:gap-6">
+    <div className={`grid ${gridClasses} gap-3 sm:gap-4 md:gap-6`}>
       {audiobooks.map((audiobook) => (
         <AudiobookCard
           key={audiobook.asin}

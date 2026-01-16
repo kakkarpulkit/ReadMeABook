@@ -152,3 +152,34 @@ export async function triggerABSItemMatch(itemId: string, asin?: string) {
     logger.error(`Failed to trigger match for item ${itemId}`, { error: error instanceof Error ? error.message : String(error) });
   }
 }
+
+/**
+ * Delete a library item from Audiobookshelf
+ * Note: This only removes the item from Audiobookshelf's database, not the actual files
+ *
+ * @param itemId - The Audiobookshelf item ID to delete
+ */
+export async function deleteABSItem(itemId: string): Promise<void> {
+  const configService = getConfigService();
+  const serverUrl = await configService.get('audiobookshelf.server_url');
+  const apiToken = await configService.get('audiobookshelf.api_token');
+
+  if (!serverUrl || !apiToken) {
+    throw new Error('Audiobookshelf not configured');
+  }
+
+  const url = `${serverUrl.replace(/\/$/, '')}/api/items/${itemId}`;
+
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${apiToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`ABS API error: ${response.status} ${response.statusText}`);
+  }
+
+  logger.info(`Deleted library item ${itemId} from Audiobookshelf`);
+}

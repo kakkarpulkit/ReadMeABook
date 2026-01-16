@@ -49,6 +49,9 @@ model User {
   bookDateCustomPrompt       String? @map("bookdate_custom_prompt") @db.Text
   bookDateOnboardingComplete Boolean @default(false) @map("bookdate_onboarding_complete")
 
+  // Request approval preferences
+  autoApproveRequests Boolean? @map("auto_approve_requests") // null = use global setting, true = auto-approve, false = require approval
+
   // Soft delete support
   deletedAt DateTime? @map("deleted_at")
   deletedBy String?   @map("deleted_by") // Admin user ID who deleted this user
@@ -162,6 +165,7 @@ model Audiobook {
   narrator    String?
   description String? @db.Text
   coverArtUrl String? @map("cover_art_url") @db.Text
+  year        Int?    // Release year extracted from releaseDate
 
   // Request tracking
   status String @default("requested") // requested, downloading, processing, completed, failed
@@ -199,7 +203,7 @@ model Request {
   userId           String    @map("user_id")
   audiobookId      String    @map("audiobook_id")
   status           String    @default("pending")
-  // Status values: pending, searching, downloading, processing, downloaded, available, failed, cancelled, awaiting_search, awaiting_import, warn
+  // Status values: pending, awaiting_approval, denied, searching, downloading, processing, downloaded, available, failed, cancelled, awaiting_search, awaiting_import, warn
   // Flow: pending → searching → downloading → processing → downloaded → available (when matched in Plex)
   progress         Int       @default(0) // 0-100
   priority         Int       @default(0)

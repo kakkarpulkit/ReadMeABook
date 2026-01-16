@@ -44,10 +44,47 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
 
     logger.info(`Organizing: ${audiobook.title} by ${audiobook.author}`);
 
+    // Fetch year from multiple sources (priority order)
+    let year = audiobook.year || undefined;
+    logger.info(`Initial year from audiobook record: ${year || 'null'}`);
+
+    if (!year && audiobook.audibleAsin) {
+      logger.info(`No year in audiobook record, attempting to fetch from AudibleCache for ASIN: ${audiobook.audibleAsin}`);
+
+      // Try AudibleCache (for popular/new releases)
+      const audibleCache = await prisma.audibleCache.findUnique({
+        where: { asin: audiobook.audibleAsin },
+        select: { releaseDate: true },
+      });
+
+      if (audibleCache?.releaseDate) {
+        logger.info(`Found AudibleCache entry with releaseDate: ${audibleCache.releaseDate}`);
+        year = new Date(audibleCache.releaseDate).getFullYear();
+        logger.info(`Extracted year ${year} from AudibleCache releaseDate`);
+
+        // Update audiobook record with year for future use
+        await prisma.audiobook.update({
+          where: { id: audiobookId },
+          data: { year },
+        });
+        logger.info(`Updated audiobook record with year ${year}`);
+      } else {
+        logger.info(`No year found in AudibleCache for ASIN ${audiobook.audibleAsin}`);
+      }
+    }
+
+    logger.info(`Final year value for path organization: ${year || 'null (year will be omitted from path)'}`)
+
     // Get file organizer (reads media_dir from database config)
     const organizer = await getFileOrganizer();
 
-    // Organize files (pass logger to file organizer)
+    // Read path template from configuration
+    const templateConfig = await prisma.configuration.findUnique({
+      where: { key: 'audiobook_path_template' },
+    });
+    const template = templateConfig?.value || '{author}/{title} {asin}';
+
+    // Organize files (pass template and logger to file organizer)
     const result = await organizer.organize(
       downloadPath,
       {
@@ -56,7 +93,9 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
         narrator: audiobook.narrator || undefined,
         coverArtUrl: audiobook.coverArtUrl || undefined,
         asin: audiobook.audibleAsin || undefined,
+        year,
       },
+      template,
       jobId ? { jobId, context: 'FileOrganizer' } : undefined
     );
 

@@ -11,10 +11,13 @@ import { AudiobookGrid } from '@/components/audiobooks/AudiobookGrid';
 import { useAudiobooks } from '@/lib/hooks/useAudiobooks';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { StickyPagination } from '@/components/ui/StickyPagination';
+import { CardSizeControls } from '@/components/ui/CardSizeControls';
+import { usePreferences } from '@/contexts/PreferencesContext';
 
 export default function HomePage() {
   const [popularPage, setPopularPage] = useState(1);
   const [newReleasesPage, setNewReleasesPage] = useState(1);
+  const { cardSize, setCardSize } = usePreferences();
 
   // Refs for auto-scrolling to section tops
   const popularSectionRef = useRef<HTMLElement>(null);
@@ -62,6 +65,9 @@ export default function HomePage() {
                 <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100">
                   Popular Audiobooks
                 </h2>
+                <div className="ml-auto">
+                  <CardSizeControls size={cardSize} onSizeChange={setCardSize} />
+                </div>
               </div>
             </div>
           </div>
@@ -82,6 +88,7 @@ export default function HomePage() {
                 audiobooks={popular}
                 isLoading={loadingPopular}
                 emptyMessage="No popular audiobooks available"
+                cardSize={cardSize}
               />
             )}
           </div>
@@ -97,6 +104,9 @@ export default function HomePage() {
                 <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100">
                   New Releases
                 </h2>
+                <div className="ml-auto">
+                  <CardSizeControls size={cardSize} onSizeChange={setCardSize} />
+                </div>
               </div>
             </div>
           </div>
@@ -117,6 +127,7 @@ export default function HomePage() {
                 audiobooks={newReleases}
                 isLoading={loadingNewReleases}
                 emptyMessage="No new releases available"
+                cardSize={cardSize}
               />
             )}
           </div>

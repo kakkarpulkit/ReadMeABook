@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { authenticatedFetcher, fetchJSON } from '@/lib/utils/api';
@@ -24,6 +24,7 @@ interface User {
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string | null;
+  autoApproveRequests: boolean | null;
   _count: {
     requests: number;
   };
@@ -43,6 +44,10 @@ function AdminUsersPageContent() {
     '/api/admin/users/pending',
     authenticatedFetcher
   );
+  const { data: globalAutoApproveData, error: globalAutoApproveError, mutate: mutateGlobalAutoApprove } = useSWR(
+    '/api/admin/settings/auto-approve',
+    authenticatedFetcher
+  );
   const [editDialog, setEditDialog] = useState<{
     isOpen: boolean;
     user: User | null;
@@ -60,10 +65,76 @@ function AdminUsersPageContent() {
     user: User | null;
   }>({ isOpen: false, user: null });
   const [deleting, setDeleting] = useState(false);
+  const [globalAutoApprove, setGlobalAutoApprove] = useState<boolean>(false);
   const toast = useToast();
 
   const isLoading = !data && !error;
   const pendingUsers: PendingUser[] = pendingData?.users || [];
+
+  // Sync global auto-approve state (default to true if not set)
+  useEffect(() => {
+    if (globalAutoApproveData?.autoApproveRequests !== undefined) {
+      setGlobalAutoApprove(globalAutoApproveData.autoApproveRequests);
+    } else if (globalAutoApproveData !== undefined && globalAutoApproveData.autoApproveRequests === undefined) {
+      // API returned but no value - default to true
+      setGlobalAutoApprove(true);
+    }
+  }, [globalAutoApproveData]);
+
+  const handleGlobalAutoApproveToggle = async (newValue: boolean) => {
+    // Optimistic update
+    setGlobalAutoApprove(newValue);
+
+    try {
+      await fetchJSON('/api/admin/settings/auto-approve', {
+        method: 'PATCH',
+        body: JSON.stringify({ autoApproveRequests: newValue }),
+      });
+      toast.success(`Global auto-approve ${newValue ? 'enabled' : 'disabled'}`);
+      mutateGlobalAutoApprove();
+      mutate(); // Refresh users list to show updated state
+    } catch (err) {
+      // Revert on error
+      setGlobalAutoApprove(!newValue);
+      const errorMsg = err instanceof Error ? err.message : 'Failed to update auto-approve setting';
+      toast.error(errorMsg);
+      console.error(err);
+    }
+  };
+
+  const handleUserAutoApproveToggle = async (user: User, newValue: boolean) => {
+    console.log('[AutoApprove] Toggle clicked:', { userId: user.id, username: user.plexUsername, newValue });
+
+    // Optimistic update
+    const previousUsers = data?.users || [];
+    const optimisticUsers = previousUsers.map((u: User) =>
+      u.id === user.id ? { ...u, autoApproveRequests: newValue } : u
+    );
+    console.log('[AutoApprove] Applying optimistic update');
+    mutate({ users: optimisticUsers }, false);
+
+    try {
+      console.log('[AutoApprove] Sending API request...');
+      const response = await fetchJSON(`/api/admin/users/${user.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          role: user.role,
+          autoApproveRequests: newValue
+        }),
+      });
+      console.log('[AutoApprove] API response received:', response);
+      toast.success(`Auto-approve ${newValue ? 'enabled' : 'disabled'} for ${user.plexUsername}`);
+      console.log('[AutoApprove] Triggering cache revalidation...');
+      mutate(); // Refresh users list
+    } catch (err) {
+      // Revert on error
+      console.error('[AutoApprove] Error occurred, reverting:', err);
+      mutate({ users: previousUsers }, false);
+      const errorMsg = err instanceof Error ? err.message : 'Failed to update user auto-approve setting';
+      toast.error(errorMsg);
+      console.error(err);
+    }
+  };
 
   const showEditDialog = (user: User) => {
     setEditRole(user.role);
@@ -207,7 +278,7 @@ function AdminUsersPageContent() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
+        <div className="sticky top-0 z-10 mb-8 flex items-center justify-between bg-gray-50 dark:bg-gray-900 py-4 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-b border-gray-200 dark:border-gray-800">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
               User Management
@@ -225,6 +296,32 @@ function AdminUsersPageContent() {
             </svg>
             <span>Back to Dashboard</span>
           </Link>
+        </div>
+
+        {/* Global Auto-Approve Toggle */}
+        <div className="mb-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
+          <div className="flex items-start gap-4">
+            <button
+              onClick={() => handleGlobalAutoApproveToggle(!globalAutoApprove)}
+              className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 mt-0.5"
+              style={{ backgroundColor: globalAutoApprove ? '#3b82f6' : '#d1d5db' }}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${globalAutoApprove ? 'translate-x-6' : 'translate-x-1'}`}
+              />
+            </button>
+            <div className="flex-1">
+              <label
+                onClick={() => handleGlobalAutoApproveToggle(!globalAutoApprove)}
+                className="block text-base font-semibold text-gray-900 dark:text-gray-100 cursor-pointer"
+              >
+                Auto-Approve All Requests
+              </label>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                When enabled, all user requests are automatically processed. When disabled, you can set per-user approval settings below.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Pending Users Section */}
@@ -306,6 +403,9 @@ function AdminUsersPageContent() {
                   Role
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Auto-Approve
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Requests
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -367,6 +467,33 @@ function AdminUsersPageContent() {
                         <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
                           SETUP ADMIN
                         </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      {user.role === 'admin' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                          Always On
+                        </span>
+                      ) : globalAutoApprove ? (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          Global Setting
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleUserAutoApproveToggle(user, !(user.autoApproveRequests ?? false))}
+                          className="relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                          style={{ backgroundColor: (user.autoApproveRequests ?? false) ? '#3b82f6' : '#d1d5db' }}
+                          title={`Toggle auto-approve for ${user.plexUsername}`}
+                        >
+                          <span
+                            className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${(user.autoApproveRequests ?? false) ? 'translate-x-6' : 'translate-x-1'}`}
+                          />
+                        </button>
                       )}
                     </div>
                   </td>
@@ -460,6 +587,7 @@ function AdminUsersPageContent() {
             <li>• <strong>User:</strong> Can request audiobooks, view own requests, and search the catalog</li>
             <li>• <strong>Admin:</strong> Full system access including settings, user management, and all requests</li>
             <li>• <strong>Setup Admin:</strong> The initial admin account created during setup - this account is protected and cannot be changed or deleted</li>
+            <li>• <strong>Auto-Approve:</strong> When the global setting is enabled, all requests are automatically processed. When disabled, you can control auto-approval per user. Admin requests are always auto-approved.</li>
             <li>• <strong>OIDC Users:</strong> Role management is handled by the identity provider - use admin role mapping in OIDC settings. Cannot be deleted as access is managed externally.</li>
             <li>• <strong>Plex Users:</strong> Can have their roles changed, but cannot be deleted as access is managed by Plex.</li>
             <li>• <strong>Local Users:</strong> Can be freely assigned user or admin roles (except setup admin). Can be deleted (their requests are preserved for historical records).</li>

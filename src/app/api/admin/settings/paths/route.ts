@@ -14,7 +14,7 @@ export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
     return requireAdmin(req, async () => {
       try {
-        const { downloadDir, mediaDir, metadataTaggingEnabled, chapterMergingEnabled } = await request.json();
+        const { downloadDir, mediaDir, audiobookPathTemplate, metadataTaggingEnabled, chapterMergingEnabled } = await request.json();
 
         if (!downloadDir || !mediaDir) {
           return NextResponse.json(
@@ -43,6 +43,20 @@ export async function PUT(request: NextRequest) {
           update: { value: mediaDir },
           create: { key: 'media_dir', value: mediaDir },
         });
+
+        // Update audiobook path template
+        if (audiobookPathTemplate !== undefined) {
+          await prisma.configuration.upsert({
+            where: { key: 'audiobook_path_template' },
+            update: { value: audiobookPathTemplate },
+            create: {
+              key: 'audiobook_path_template',
+              value: audiobookPathTemplate,
+              category: 'automation',
+              description: 'Template for organizing audiobook files in media directory',
+            },
+          });
+        }
 
         // Update metadata tagging setting
         await prisma.configuration.upsert({

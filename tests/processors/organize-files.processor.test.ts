@@ -58,6 +58,7 @@ describe('processOrganizeFiles', () => {
     configMock.get.mockImplementation(async (key: string) => {
       if (key === 'plex.trigger_scan_after_import') return 'true';
       if (key === 'plex_audiobook_library_id') return 'lib-1';
+      if (key === 'audiobook_path_template') return '{author}/{title} {asin}';
       return null;
     });
 
@@ -94,6 +95,10 @@ describe('processOrganizeFiles', () => {
       importAttempts: 0,
       maxImportRetries: 3,
       deletedAt: null,
+    });
+    configMock.get.mockImplementation(async (key: string) => {
+      if (key === 'audiobook_path_template') return '{author}/{title} {asin}';
+      return null;
     });
 
     const { processOrganizeFiles } = await import('@/lib/processors/organize-files.processor');

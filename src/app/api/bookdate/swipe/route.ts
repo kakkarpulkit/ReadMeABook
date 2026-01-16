@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { getAudibleService } from '@/lib/integrations/audible.service';
 import { RMABLogger } from '@/lib/utils/logger';
 
 const logger = RMABLogger.create('API.BookDateSwipe');
@@ -62,12 +63,33 @@ async function handler(req: AuthenticatedRequest) {
     // If swiped right and not marked as known, create request
     if (action === 'right' && !markedAsKnown && recommendation.audnexusAsin) {
       try {
+        // Fetch full details from Audnexus to get releaseDate and year
+        let year: number | undefined;
+        try {
+          const audibleService = getAudibleService();
+          const audnexusData = await audibleService.getAudiobookDetails(recommendation.audnexusAsin);
+
+          if (audnexusData?.releaseDate) {
+            try {
+              const releaseYear = new Date(audnexusData.releaseDate).getFullYear();
+              if (!isNaN(releaseYear)) {
+                year = releaseYear;
+                logger.debug(`Extracted year ${year} from Audnexus releaseDate: ${audnexusData.releaseDate}`);
+              }
+            } catch (error) {
+              logger.warn(`Failed to parse Audnexus releaseDate "${audnexusData.releaseDate}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+          }
+        } catch (error) {
+          logger.warn(`Failed to fetch Audnexus data for ASIN ${recommendation.audnexusAsin}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+
         // Check if book already exists in audiobooks table
         let audiobook = await prisma.audiobook.findFirst({
           where: { audibleAsin: recommendation.audnexusAsin },
         });
 
-        // If not, create it
+        // If not, create it with year
         if (!audiobook) {
           audiobook = await prisma.audiobook.create({
             data: {
@@ -77,9 +99,18 @@ async function handler(req: AuthenticatedRequest) {
               narrator: recommendation.narrator,
               description: recommendation.description,
               coverArtUrl: recommendation.coverUrl,
+              year,
               status: 'requested',
             },
           });
+          logger.debug(`Created audiobook ${audiobook.id} with year: ${year || 'none'}`);
+        } else if (year) {
+          // Always update year if we have it from Audnexus (even if audiobook already has one)
+          audiobook = await prisma.audiobook.update({
+            where: { id: audiobook.id },
+            data: { year },
+          });
+          logger.debug(`Updated audiobook ${audiobook.id} with year ${year}`);
         }
 
         // Create request (if not already exists)

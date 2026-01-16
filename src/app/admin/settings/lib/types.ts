@@ -95,6 +95,7 @@ export interface DownloadClientSettings {
 export interface PathsSettings {
   downloadDir: string;
   mediaDir: string;
+  audiobookPathTemplate?: string;
   metadataTaggingEnabled: boolean;
   chapterMergingEnabled: boolean;
 }
@@ -187,6 +188,11 @@ export interface TestResult {
   success: boolean;
   message: string;
   responseTime?: number;
+  templateValidation?: {
+    isValid: boolean;
+    error?: string;
+    previewPaths?: string[];
+  };
 }
 
 /**

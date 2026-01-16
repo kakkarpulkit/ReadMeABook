@@ -92,7 +92,13 @@ model Request {
    - **ONLY deletes title folder** (not author folder)
    - Handles missing folders gracefully
 
-4. **Soft Delete Request**
+4. **Delete from Library Backend**
+   - **Audiobookshelf Mode:** Delete library item via API if `absItemId` exists
+     - Prevents "ghost" entries in Audiobookshelf library
+     - Only removes from ABS database, not files (already deleted in step 3)
+   - **Plex Mode:** Clear plex_library cache records
+
+5. **Soft Delete Request**
    - UPDATE: `deletedAt = NOW(), deletedBy = adminUserId`
    - Preserves for audit trail and orphaned download tracking
 
@@ -186,6 +192,8 @@ where: {
 6. ✅ **Media folder not found** - Log and continue (already deleted)
 7. ✅ **Multiple delete clicks** - Button disabled during deletion
 8. ✅ **Network error** - Alert shown, request remains
+9. ✅ **ABS library item deletion fails** - Log error, continue with soft delete
+10. ✅ **No absItemId present** - Skip ABS deletion (not yet in library)
 
 ## File Structure
 

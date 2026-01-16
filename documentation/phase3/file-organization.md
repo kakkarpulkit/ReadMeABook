@@ -8,32 +8,38 @@ Copies completed downloads to standardized directory structure for Plex. Automat
 
 Target directory read from database config `media_dir` (configurable in setup wizard and settings).
 
+**Template-based organization:**
+- Config key: `audiobook_path_template`
+- Default: `{author}/{title} {asin}`
+- Variables: `{author}`, `{title}`, `{narrator}`, `{asin}`, `{year}`
+- Optional variables (narrator, asin, year) are removed if not available
+
+**Examples:**
 ```
-[media_dir]/
-└── Author Name/
-    └── Book Title (Year) ASIN/
-        ├── Book Title.m4b
-        └── cover.jpg
+Template: {author}/{title} {asin}
+Result: Douglas Adams/The Hitchhiker's Guide to the Galaxy B0009JKV9W/
+
+Template: {author}/{title} ({year})
+Result: Douglas Adams/The Hitchhiker's Guide to the Galaxy (2005)/
+
+Template: {author}/{narrator}/{title}
+Result: Douglas Adams/Stephen Fry/The Hitchhiker's Guide to the Galaxy/
 ```
 
-**Folder naming format:**
+**Legacy behavior (hardcoded):**
 - With year and ASIN: `Book Title (Year) ASIN`
 - With ASIN only: `Book Title ASIN`
 - With year only: `Book Title (Year)`
 - Fallback: `Book Title`
 
-**Example:** `Douglas Adams/The Hitchhiker's Guide to the Galaxy (2005) B0009JKV9W/`
-
-**Rationale:** Including ASIN in folder name improves Plex/Audnexus agent matching accuracy.
-
-Default: `/media/audiobooks/` (if not configured)
+**Rationale:** Template system allows customization for different metadata agent configurations and user preferences while maintaining backward compatibility.
 
 ## Process
 
 1. Download completes in `/downloads/[torrent-name]/` or `/downloads/[filename]` (single file)
 2. Identify audiobook files (.m4b, .m4a, .mp3) - supports both directories and single files
-3. Read media directory from database config `media_dir`
-4. Create `[media_dir]/[Author]/[Title (Year) ASIN]/`
+3. Read media directory and path template from database config (`media_dir`, `audiobook_path_template`)
+4. Apply template to create target path: `[media_dir]/[template result]/`
 5. **Copy** files (not move - originals stay for seeding)
 6. **Tag metadata** (if enabled) - writes correct title, author, narrator, ASIN to audio files
 7. Copy cover art if found, else download from Audible
@@ -191,7 +197,10 @@ async function organize(
 ## Configuration
 
 - **Media directory:** Read from database config key `media_dir` (set in setup wizard or settings)
-- **Fallback:** `/media/audiobooks` if not configured
+- **Path template:** Read from database config key `audiobook_path_template` (default: `{author}/{title} {asin}`)
+- **Metadata tagging:** `metadata_tagging_enabled` (boolean, default: true)
+- **Chapter merging:** `chapter_merging_enabled` (boolean, default: false)
+- **Fallback:** `/media/audiobooks` if media_dir not configured
 - **Temp directory:** `/tmp/readmeabook` (or `TEMP_DIR` env var)
 
 ## Fixed Issues ✅

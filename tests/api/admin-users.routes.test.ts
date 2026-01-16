@@ -55,6 +55,7 @@ describe('Admin users routes', () => {
       authProvider: 'local',
       plexUsername: 'user',
       deletedAt: null,
+      role: 'user',
     });
     prismaMock.user.update.mockResolvedValueOnce({ id: 'u3', plexUsername: 'user', role: 'admin' });
     const request = { json: vi.fn().mockResolvedValue({ role: 'admin' }) };
@@ -64,6 +65,72 @@ describe('Admin users routes', () => {
     const payload = await response.json();
 
     expect(payload.user.role).toBe('admin');
+  });
+
+  it('allows autoApproveRequests update for OIDC users without role change', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      isSetupAdmin: false,
+      authProvider: 'oidc',
+      plexUsername: 'oidc-user',
+      deletedAt: null,
+      role: 'user',
+    });
+    prismaMock.user.update.mockResolvedValueOnce({
+      id: 'oidc-1',
+      plexUsername: 'oidc-user',
+      role: 'user',
+      autoApproveRequests: true,
+    });
+    const request = { json: vi.fn().mockResolvedValue({ role: 'user', autoApproveRequests: true }) };
+
+    const { PUT } = await import('@/app/api/admin/users/[id]/route');
+    const response = await PUT(request as any, { params: Promise.resolve({ id: 'oidc-1' }) });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.user.autoApproveRequests).toBe(true);
+  });
+
+  it('prevents OIDC user role change', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      isSetupAdmin: false,
+      authProvider: 'oidc',
+      plexUsername: 'oidc-user',
+      deletedAt: null,
+      role: 'user',
+    });
+    const request = { json: vi.fn().mockResolvedValue({ role: 'admin', autoApproveRequests: true }) };
+
+    const { PUT } = await import('@/app/api/admin/users/[id]/route');
+    const response = await PUT(request as any, { params: Promise.resolve({ id: 'oidc-1' }) });
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toContain('OIDC');
+  });
+
+  it('allows autoApproveRequests update for setup admin without role change', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      isSetupAdmin: true,
+      authProvider: 'local',
+      plexUsername: 'setup-admin',
+      deletedAt: null,
+      role: 'admin',
+    });
+    prismaMock.user.update.mockResolvedValueOnce({
+      id: 'setup-1',
+      plexUsername: 'setup-admin',
+      role: 'admin',
+      autoApproveRequests: true,
+    });
+    const request = { json: vi.fn().mockResolvedValue({ role: 'admin', autoApproveRequests: true }) };
+
+    const { PUT } = await import('@/app/api/admin/users/[id]/route');
+    const response = await PUT(request as any, { params: Promise.resolve({ id: 'setup-1' }) });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.user.autoApproveRequests).toBe(true);
   });
 
   it('soft deletes a local user', async () => {

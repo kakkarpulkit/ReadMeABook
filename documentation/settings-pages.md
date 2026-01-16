@@ -68,7 +68,7 @@ src/app/admin/settings/
 2. **Audiobookshelf** - URL, API token (masked), library ID, Audible region, filesystem scan trigger toggle
 3. **Prowlarr** - URL, API key (masked), indexer selection with priority, seeding time, RSS monitoring toggle
 4. **Download Client** - Type, URL, credentials (masked)
-5. **Paths** - Download + media directories
+5. **Paths** - Download + media directories, audiobook organization template, metadata tagging toggle, chapter merging toggle
 6. **BookDate** - AI provider, API key (encrypted), model selection, library scope, custom prompt, swipe history
 
 ## Audible Region
@@ -97,6 +97,34 @@ src/app/admin/settings/
 - **Cache management**: ConfigService cache and AudibleService initialization are cleared when region changes
 - **Smart re-initialization**: Service automatically detects region changes and re-initializes before each request
 - See: `documentation/integrations/audible.md` for technical details
+
+## Audiobook Organization Template
+
+**Purpose:** Customize how audiobooks are organized within the media directory using variable-based templates.
+
+**Configuration:**
+- Key: `audiobook_path_template` (string, default: `{author}/{title} {asin}`)
+- Variables: `{author}`, `{title}`, `{narrator}`, `{asin}`, `{year}`
+- Optional variables (narrator, asin, year) removed if not available
+- Template validated on test, shows preview examples
+
+**UI (PathsTab):**
+- Text input with monospace font
+- Placeholder: `{author}/{title} {asin}`
+- Variable reference panel showing all available variables
+- Template validation on "Test Paths" with success/error feedback
+- Preview examples showing 2-3 sample paths with actual data
+
+**Validation:**
+- Must contain at least `{author}` or `{title}` (required variables)
+- Cannot be empty or only contain optional variables
+- Invalid templates show error message
+- Valid templates show preview paths
+
+**Examples:**
+- `{author}/{title} {asin}` → `Douglas Adams/The Hitchhiker's Guide to the Galaxy B0009JKV9W/`
+- `{author}/{title} ({year})` → `Douglas Adams/The Hitchhiker's Guide to the Galaxy (2005)/`
+- `{author}/{narrator}/{title}` → `Douglas Adams/Stephen Fry/The Hitchhiker's Guide to the Galaxy/`
 
 ## Filesystem Scan Trigger
 
@@ -160,7 +188,7 @@ src/app/admin/settings/
 - Plex: URL or token modified
 - Prowlarr: URL or API key modified (NOT indexer config)
 - Download Client: URL, username, or password modified
-- Paths: Directory paths modified
+- Paths: Directory paths or template modified
 
 ## API Endpoints
 
@@ -197,14 +225,15 @@ src/app/admin/settings/
 - Requires prior successful test if credentials changed
 
 **PUT /api/admin/settings/paths**
-- Updates paths
-- Requires prior successful test if paths changed
+- Updates paths and audiobook organization template
+- Requires prior successful test if paths or template changed
+- Body: `{ downloadDir, mediaDir, audiobookPathTemplate, metadataTaggingEnabled, chapterMergingEnabled }`
 
 **Test Endpoints (authenticated, handle masked values):**
 - POST /api/admin/settings/test-plex - Tests Plex connection, uses stored token if masked, returns libraries
 - POST /api/admin/settings/test-prowlarr - Tests connection, uses stored API key if masked, returns indexers
 - POST /api/admin/settings/test-download-client - Tests qBittorrent/Transmission, uses stored password if masked
-- POST /api/setup/test-paths - Validates paths writable (no sensitive data, reuses wizard endpoint)
+- POST /api/setup/test-paths - Validates paths writable and template format, returns `{success, message, templateValidation: {isValid, error?, previewPaths?}}`
 
 **BookDate Endpoints:**
 - GET /api/bookdate/config - Get global BookDate configuration (API key excluded, admin only)
@@ -237,7 +266,7 @@ src/app/admin/settings/
 **Plex:** Valid HTTP/HTTPS URL, non-empty token, library ID selected
 **Prowlarr:** Valid URL, non-empty API key, ≥1 indexer configured, priority 1-25, seedingTimeMinutes ≥0, rssEnabled boolean
 **Download Client:** Valid URL, credentials required, type must be 'qbittorrent' or 'transmission'
-**Paths:** Absolute paths, exist or creatable, writable, cannot be same directory
+**Paths:** Absolute paths, exist or creatable, writable, cannot be same directory, template must contain `{author}` or `{title}`
 
 ## Tech Stack
 

@@ -42,6 +42,7 @@ download_client.qbittorrent.url
 download_client.qbittorrent.password (encrypted)
 paths.downloads
 paths.media_library
+paths.audiobook_path_template
 automation.check_interval_seconds
 system.setup_completed
 ```
@@ -99,7 +100,8 @@ const CONFIG_DEFAULTS = {
   'system.setup_completed': 'false',
   'system.log_level': 'info',
   'paths.downloads': '/downloads',
-  'paths.media_library': '/media'
+  'paths.media_library': '/media',
+  'audiobook_path_template': '{author}/{title} {asin}'
 };
 ```
 

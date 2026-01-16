@@ -19,12 +19,20 @@ export async function PUT(
       try {
         const { id } = await params;
         const body = await request.json();
-        const { role } = body;
+        const { role, autoApproveRequests } = body;
 
         // Validate role
         if (!role || (role !== 'user' && role !== 'admin')) {
           return NextResponse.json(
             { error: 'Invalid role. Must be "user" or "admin"' },
+            { status: 400 }
+          );
+        }
+
+        // Validate autoApproveRequests (optional)
+        if (autoApproveRequests !== undefined && autoApproveRequests !== null && typeof autoApproveRequests !== 'boolean') {
+          return NextResponse.json(
+            { error: 'Invalid autoApproveRequests. Must be a boolean or null' },
             { status: 400 }
           );
         }
@@ -45,6 +53,7 @@ export async function PUT(
             authProvider: true,
             plexUsername: true,
             deletedAt: true,
+            role: true, // Need current role to detect role changes
           },
         });
 
@@ -63,30 +72,48 @@ export async function PUT(
           );
         }
 
-        // Prevent changing setup admin role
-        if (targetUser.isSetupAdmin && role !== 'admin') {
+        // Detect if role is being changed
+        const isRoleChange = targetUser.role !== role;
+
+        // Prevent changing setup admin role (only if role is actually being changed)
+        if (targetUser.isSetupAdmin && isRoleChange && role !== 'admin') {
           return NextResponse.json(
             { error: 'Cannot change the setup admin role. This account must always remain an admin.' },
             { status: 403 }
           );
         }
 
-        // Prevent changing OIDC user roles (managed by identity provider)
-        if (targetUser.authProvider === 'oidc') {
+        // Prevent changing OIDC user roles (only if role is actually being changed)
+        if (targetUser.authProvider === 'oidc' && isRoleChange) {
           return NextResponse.json(
             { error: 'Cannot change OIDC user roles. Use admin role mapping in OIDC settings instead.' },
             { status: 403 }
           );
         }
 
-        // Update user role
+        // Validate that admins cannot have autoApproveRequests set to false
+        if (role === 'admin' && autoApproveRequests === false) {
+          return NextResponse.json(
+            { error: 'Admins must always auto-approve requests. Cannot set autoApproveRequests to false for admin users.' },
+            { status: 400 }
+          );
+        }
+
+        // Prepare update data
+        const updateData: { role: string; autoApproveRequests?: boolean | null } = { role };
+        if (autoApproveRequests !== undefined) {
+          updateData.autoApproveRequests = autoApproveRequests;
+        }
+
+        // Update user role and autoApproveRequests
         const updatedUser = await prisma.user.update({
           where: { id },
-          data: { role },
+          data: updateData,
           select: {
             id: true,
             plexUsername: true,
             role: true,
+            autoApproveRequests: true,
           },
         });
 

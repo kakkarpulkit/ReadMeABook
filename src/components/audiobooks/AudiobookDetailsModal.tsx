@@ -411,16 +411,27 @@ export function AudiobookDetailsModal({
                   'processing',
                   'downloaded',
                   'awaiting_import',
+                  'awaiting_approval',
+                  'denied',
                 ];
                 if (
                   isRequested &&
                   requestStatus &&
                   inProgressStatuses.includes(requestStatus)
                 ) {
-                  // Special text for 'downloaded' status (waiting for Plex scan)
+                  // Determine button text and styling based on status
                   let buttonText;
+                  let buttonClass = 'w-full cursor-not-allowed opacity-75';
+
                   if (requestStatus === 'downloaded') {
                     buttonText = 'Processing...';
+                  } else if (requestStatus === 'awaiting_approval') {
+                    buttonText = requestedByUsername
+                      ? `Pending Approval (${requestedByUsername})`
+                      : 'Pending Approval';
+                  } else if (requestStatus === 'denied') {
+                    buttonText = 'Request Denied';
+                    buttonClass = 'w-full cursor-not-allowed opacity-75 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30';
                   } else {
                     buttonText = requestedByUsername
                       ? `Requested by ${requestedByUsername}`
@@ -434,7 +445,7 @@ export function AudiobookDetailsModal({
                         disabled={true}
                         variant="primary"
                         size="lg"
-                        className="w-full cursor-not-allowed opacity-75"
+                        className={buttonClass}
                       >
                         {buttonText}
                       </Button>

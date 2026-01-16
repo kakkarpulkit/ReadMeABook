@@ -8,10 +8,16 @@ import { createPrismaMock } from '../helpers/prisma';
 
 let authRequest: any;
 
-const prismaMock = createPrismaMock();
-const jobQueueMock = vi.hoisted(() => ({ addSearchJob: vi.fn() }));
-const findPlexMatchMock = vi.hoisted(() => vi.fn());
 const requireAuthMock = vi.hoisted(() => vi.fn());
+const prismaMock = createPrismaMock();
+const jobQueueMock = vi.hoisted(() => ({
+  addSearchJob: vi.fn(),
+}));
+const findPlexMatchMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/middleware/auth', () => ({
+  requireAuth: requireAuthMock,
+}));
 
 vi.mock('@/lib/db', () => ({
   prisma: prismaMock,
@@ -23,10 +29,6 @@ vi.mock('@/lib/services/job-queue.service', () => ({
 
 vi.mock('@/lib/utils/audiobook-matcher', () => ({
   findPlexMatch: findPlexMatchMock,
-}));
-
-vi.mock('@/lib/middleware/auth', () => ({
-  requireAuth: requireAuthMock,
 }));
 
 describe('Requests API routes', () => {
@@ -89,11 +91,36 @@ describe('Requests API routes', () => {
       audibleAsin: 'ASIN-3',
     });
     prismaMock.request.findFirst.mockResolvedValueOnce(null);
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'user-1',
+      role: 'user',
+      autoApproveRequests: true,  // Auto-approve enabled for this user
+      plexId: 'user-1',
+      plexUsername: 'testuser',
+      plexEmail: null,
+      isSetupAdmin: false,
+      avatarUrl: null,
+      authToken: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastLoginAt: null,
+      plexHomeUserId: null,
+      authProvider: 'plex',
+      oidcSubject: null,
+      oidcProvider: null,
+      registrationStatus: 'approved',
+      bookDateLibraryScope: 'full',
+      bookDateCustomPrompt: null,
+      bookDateOnboardingComplete: false,
+      deletedAt: null,
+      deletedBy: null,
+    } as any);
     prismaMock.request.create.mockResolvedValueOnce({
       id: 'req-2',
+      status: 'pending',
       audiobook: { id: 'ab-1', title: 'Title', author: 'Author', audibleAsin: 'ASIN-3' },
       user: { id: 'user-1', plexUsername: 'user' },
-    });
+    } as any);
 
     const { POST } = await import('@/app/api/requests/route');
     const response = await POST({} as any);
@@ -124,6 +151,30 @@ describe('Requests API routes', () => {
       audibleAsin: 'ASIN-4',
     });
     prismaMock.request.findFirst.mockResolvedValueOnce(null);
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'user-1',
+      role: 'user',
+      autoApproveRequests: true,  // Auto-approve enabled for this user
+      plexId: 'user-1',
+      plexUsername: 'testuser',
+      plexEmail: null,
+      isSetupAdmin: false,
+      avatarUrl: null,
+      authToken: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastLoginAt: null,
+      plexHomeUserId: null,
+      authProvider: 'plex',
+      oidcSubject: null,
+      oidcProvider: null,
+      registrationStatus: 'approved',
+      bookDateLibraryScope: 'full',
+      bookDateCustomPrompt: null,
+      bookDateOnboardingComplete: false,
+      deletedAt: null,
+      deletedBy: null,
+    } as any);
     prismaMock.request.create.mockResolvedValueOnce({
       id: 'req-3',
       audiobook: { id: 'ab-2', title: 'Title', author: 'Author', audibleAsin: 'ASIN-4' },

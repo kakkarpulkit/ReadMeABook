@@ -14,6 +14,11 @@ PostgreSQL database storing users, audiobooks, requests, downloads, configuratio
 - `avatar_url`, `auth_token` (encrypted), `created_at`, `updated_at`, `last_login_at`
 - **Plex Home profile tracking:**
   - `plex_home_user_id` (string, nullable) - Profile ID from Plex Home (null = main account, set = home profile)
+- **Request approval control:**
+  - `auto_approve_requests` (bool, nullable, default null) - Per-user override for request approval
+    - `null` = Use global setting (Configuration.auto_approve_requests)
+    - `true` = Always auto-approve this user's requests
+    - `false` = Always require admin approval for this user's requests
 - **BookDate per-user preferences:**
   - `bookdate_library_scope` ('full'|'rated', default 'full') - Library scope for recommendations
   - `bookdate_custom_prompt` (text, optional, max 1000 chars) - Custom preferences for AI
@@ -52,8 +57,12 @@ PostgreSQL database storing users, audiobooks, requests, downloads, configuratio
 
 ### Requests
 - `id` (UUID PK), `user_id` (FK), `audiobook_id` (FK)
-- `status` ('pending'|'searching'|'downloading'|'processing'|'downloaded'|'available'|'failed'|'cancelled'|'awaiting_search'|'awaiting_import'|'warn')
-  - Flow: pending → searching → downloading → processing → downloaded → available (when matched in Plex)
+- `status` ('pending'|'searching'|'downloading'|'processing'|'downloaded'|'available'|'failed'|'cancelled'|'awaiting_search'|'awaiting_import'|'warn'|'awaiting_approval'|'denied')
+  - **Approval flow:** awaiting_approval → (approve) → pending → searching → downloading → processing → downloaded → available
+  - **Denial flow:** awaiting_approval → (deny) → denied
+  - **awaiting_approval** - Request pending admin approval (only if auto-approve disabled)
+  - **denied** - Request rejected by admin (terminal state)
+  - **pending** - Request approved and queued for processing
 - `progress` (0-100), `priority`, `error_message`
 - `search_attempts`, `download_attempts`, `import_attempts`, `max_import_retries` (default 5)
 - `last_search_at`, `last_import_at`, `created_at`, `updated_at`, `completed_at`
@@ -72,7 +81,11 @@ PostgreSQL database storing users, audiobooks, requests, downloads, configuratio
 - `id` (UUID PK), `key` (unique), `value`, `encrypted` (bool), `category`, `description`
 - `created_at`, `updated_at`
 - Indexes: `key`, `category`
-- Example keys: `plex.server_url`, `plex.auth_token`, `indexer.prowlarr_url`, `download_client.qbittorrent_password`, `paths.downloads`, `setup.completed`
+- Example keys: `plex.server_url`, `plex.auth_token`, `indexer.prowlarr_url`, `download_client.qbittorrent_password`, `paths.downloads`, `setup.completed`, `auto_approve_requests`
+- **Request approval:**
+  - `auto_approve_requests` (value: 'true'|'false') - Global setting for auto-approving requests
+  - If 'true' and User.autoApproveRequests is null, requests auto-approved
+  - If not 'true' and User.autoApproveRequests is null, requests require admin approval
 
 ### Jobs
 - `id` (UUID PK), `bull_job_id`, `request_id` (FK nullable)

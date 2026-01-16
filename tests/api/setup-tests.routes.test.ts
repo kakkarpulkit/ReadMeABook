@@ -178,7 +178,89 @@ describe('Setup test routes', () => {
     const payload = await response.json();
 
     expect(payload.success).toBe(true);
-    expect(payload.downloadDirValid).toBe(true);
+    expect(payload.downloadDir.valid).toBe(true);
+  });
+
+  it('validates path template when provided', async () => {
+    fsMock.access.mockResolvedValue(undefined);
+    fsMock.writeFile.mockResolvedValue(undefined);
+    fsMock.unlink.mockResolvedValue(undefined);
+
+    const { POST } = await import('@/app/api/setup/test-paths/route');
+    const response = await POST({
+      json: vi.fn().mockResolvedValue({
+        downloadDir: '/downloads',
+        mediaDir: '/media',
+        audiobookPathTemplate: '{author}/{title} ({year})',
+      }),
+    } as any);
+    const payload = await response.json();
+
+    expect(payload.success).toBe(true);
+    expect(payload.template).toBeDefined();
+    expect(payload.template.isValid).toBe(true);
+    expect(payload.template.previewPaths).toHaveLength(3);
+  });
+
+  it('returns error for invalid path template', async () => {
+    fsMock.access.mockResolvedValue(undefined);
+    fsMock.writeFile.mockResolvedValue(undefined);
+    fsMock.unlink.mockResolvedValue(undefined);
+
+    const { POST } = await import('@/app/api/setup/test-paths/route');
+    const response = await POST({
+      json: vi.fn().mockResolvedValue({
+        downloadDir: '/downloads',
+        mediaDir: '/media',
+        audiobookPathTemplate: '{author}/{invalid_var}',
+      }),
+    } as any);
+    const payload = await response.json();
+
+    expect(payload.success).toBe(true);
+    expect(payload.template).toBeDefined();
+    expect(payload.template.isValid).toBe(false);
+    expect(payload.template.error).toContain('Unknown variable');
+    expect(payload.template.previewPaths).toBeUndefined();
+  });
+
+  it('returns error when paths validation fails', async () => {
+    fsMock.access.mockRejectedValue(new Error('missing'));
+    fsMock.mkdir.mockRejectedValue(new Error('no permissions'));
+
+    const { POST } = await import('@/app/api/setup/test-paths/route');
+    const response = await POST({
+      json: vi.fn().mockResolvedValue({
+        downloadDir: '/bad/downloads',
+        mediaDir: '/bad/media',
+      }),
+    } as any);
+    const payload = await response.json();
+
+    expect(payload.success).toBe(false);
+    expect(payload.downloadDir.valid).toBe(false);
+    expect(payload.mediaDir.valid).toBe(false);
+    expect(payload.error).toBeDefined();
+  });
+
+  it('validates template with absolute path and returns error', async () => {
+    fsMock.access.mockResolvedValue(undefined);
+    fsMock.writeFile.mockResolvedValue(undefined);
+    fsMock.unlink.mockResolvedValue(undefined);
+
+    const { POST } = await import('@/app/api/setup/test-paths/route');
+    const response = await POST({
+      json: vi.fn().mockResolvedValue({
+        downloadDir: '/downloads',
+        mediaDir: '/media',
+        audiobookPathTemplate: '/absolute/{author}/{title}',
+      }),
+    } as any);
+    const payload = await response.json();
+
+    expect(payload.template).toBeDefined();
+    expect(payload.template.isValid).toBe(false);
+    expect(payload.template.error).toContain('absolute');
   });
 
   it('tests Audiobookshelf connection with saved token', async () => {

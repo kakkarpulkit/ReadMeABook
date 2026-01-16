@@ -147,6 +147,66 @@ describe('Admin settings core routes', () => {
     expect(invalidateQbMock).toHaveBeenCalled();
   });
 
+  it('updates paths settings with custom audiobook path template', async () => {
+    const request = {
+      json: vi.fn().mockResolvedValue({
+        downloadDir: '/downloads',
+        mediaDir: '/media',
+        audiobookPathTemplate: '{author}/{title} - {narrator}',
+        metadataTaggingEnabled: true,
+        chapterMergingEnabled: false,
+      }),
+    };
+
+    const { PUT } = await import('@/app/api/admin/settings/paths/route');
+    const response = await PUT(request as any);
+    const payload = await response.json();
+
+    expect(payload.success).toBe(true);
+    expect(prismaMock.configuration.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: 'audiobook_path_template' },
+        update: { value: '{author}/{title} - {narrator}' },
+      })
+    );
+  });
+
+  it('rejects paths settings when directories are the same', async () => {
+    const request = {
+      json: vi.fn().mockResolvedValue({
+        downloadDir: '/same',
+        mediaDir: '/same',
+        metadataTaggingEnabled: true,
+        chapterMergingEnabled: false,
+      }),
+    };
+
+    const { PUT } = await import('@/app/api/admin/settings/paths/route');
+    const response = await PUT(request as any);
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toContain('must be different');
+  });
+
+  it('rejects paths settings when directories are missing', async () => {
+    const request = {
+      json: vi.fn().mockResolvedValue({
+        downloadDir: '',
+        mediaDir: '/media',
+        metadataTaggingEnabled: true,
+        chapterMergingEnabled: false,
+      }),
+    };
+
+    const { PUT } = await import('@/app/api/admin/settings/paths/route');
+    const response = await PUT(request as any);
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toContain('required');
+  });
+
   it('updates Prowlarr settings', async () => {
     const request = { json: vi.fn().mockResolvedValue({ url: 'http://prowlarr', apiKey: 'key' }) };
 

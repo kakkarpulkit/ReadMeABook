@@ -10,11 +10,14 @@ import { Header } from '@/components/layout/Header';
 import { AudiobookGrid } from '@/components/audiobooks/AudiobookGrid';
 import { useSearch } from '@/lib/hooks/useAudiobooks';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { CardSizeControls } from '@/components/ui/CardSizeControls';
+import { usePreferences } from '@/contexts/PreferencesContext';
 
 export default function SearchPage() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [page, setPage] = useState(1);
+  const { cardSize, setCardSize } = usePreferences();
 
   // Debounce search query
   useEffect(() => {
@@ -101,18 +104,32 @@ export default function SearchPage() {
         {/* Results */}
         {debouncedQuery ? (
           <div className="space-y-6">
-            {/* Results Count */}
-            {!isLoading && totalResults > 0 && (
-              <div className="text-center text-gray-600 dark:text-gray-400">
-                Found {totalResults.toLocaleString()} result{totalResults !== 1 ? 's' : ''} for "{debouncedQuery}"
+            {/* Sticky Results Header with Card Size Controls */}
+            <div className="sticky top-14 sm:top-16 z-30 mb-4 sm:mb-6">
+              <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-2xl px-4 sm:px-6 py-3 border border-gray-200/50 dark:border-gray-700/50 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="w-1 h-6 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full" />
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    Search Results
+                  </h2>
+                  {!isLoading && totalResults > 0 && (
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                      ({totalResults.toLocaleString()} result{totalResults !== 1 ? 's' : ''})
+                    </span>
+                  )}
+                  <div className="ml-auto">
+                    <CardSizeControls size={cardSize} onSizeChange={setCardSize} />
+                  </div>
+                </div>
               </div>
-            )}
+            </div>
 
             {/* Results Grid */}
             <AudiobookGrid
               audiobooks={results}
               isLoading={!!(isLoading && page === 1)}
               emptyMessage={`No results found for "${debouncedQuery}"`}
+              cardSize={cardSize}
             />
 
             {/* Load More */}

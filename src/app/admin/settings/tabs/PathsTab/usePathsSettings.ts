@@ -27,7 +27,7 @@ export function usePathsSettings({ paths, onChange, onValidationChange }: UsePat
   };
 
   /**
-   * Test if paths are valid and writable
+   * Test if paths are valid and writable, including template validation
    */
   const testPaths = async () => {
     setTesting(true);
@@ -40,6 +40,7 @@ export function usePathsSettings({ paths, onChange, onValidationChange }: UsePat
         body: JSON.stringify({
           downloadDir: paths.downloadDir,
           mediaDir: paths.mediaDir,
+          audiobookPathTemplate: paths.audiobookPathTemplate,
         }),
       });
 
@@ -48,7 +49,8 @@ export function usePathsSettings({ paths, onChange, onValidationChange }: UsePat
       if (data.success) {
         const result: TestResult = {
           success: true,
-          message: 'All paths are valid and writable'
+          message: 'All paths are valid and writable',
+          templateValidation: data.template
         };
         setTestResult(result);
         onValidationChange(true);
@@ -56,10 +58,13 @@ export function usePathsSettings({ paths, onChange, onValidationChange }: UsePat
       } else {
         const result: TestResult = {
           success: false,
-          message: data.error || 'Path validation failed'
+          message: data.error || 'Path validation failed',
+          templateValidation: data.template
         };
         setTestResult(result);
-        onValidationChange(false);
+        // Only mark as valid if paths are valid AND template is valid (if provided)
+        const isValid = false;
+        onValidationChange(isValid);
         return result;
       }
     } catch (error) {

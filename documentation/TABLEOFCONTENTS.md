@@ -13,6 +13,7 @@
 - **Settings management, encryption** → [backend/services/config.md](backend/services/config.md)
 - **Settings UI (modular architecture, all tabs)** → [settings-pages.md](settings-pages.md)
 - **Settings architecture refactoring (Jan 2026)** → [settings-pages.md](settings-pages.md#architecture-refactored-jan-2026)
+- **Audiobook organization templates** → [settings-pages.md](settings-pages.md#audiobook-organization-template), [phase3/file-organization.md](phase3/file-organization.md#target-structure)
 - **Setup middleware & status check** → [backend/middleware.md](backend/middleware.md)
 - **Environment variables, PUBLIC_URL, OAuth configuration** → [backend/services/environment.md](backend/services/environment.md)
 
@@ -75,6 +76,7 @@
 - **Dashboard (metrics, downloads, requests)** → [admin-dashboard.md](admin-dashboard.md)
 - **Jobs management UI** → [backend/services/scheduler.md](backend/services/scheduler.md)
 - **Request deletion (soft delete, seeding awareness)** → [admin-features/request-deletion.md](admin-features/request-deletion.md)
+- **Request approval system, auto-approve settings** → [admin-features/request-approval.md](admin-features/request-approval.md)
 
 ## Deployment
 - **Docker Compose setup (multi-container)** → [deployment/docker.md](deployment/docker.md)
@@ -98,6 +100,9 @@
 **"How does authentication work?"** → [backend/services/auth.md](backend/services/auth.md)
 **"How do I change my password?"** → [backend/services/auth.md](backend/services/auth.md) (local users only - accessed via user menu in header)
 **"How do I delete requests?"** → [admin-features/request-deletion.md](admin-features/request-deletion.md)
+**"How do I approve/deny user requests?"** → [admin-features/request-approval.md](admin-features/request-approval.md)
+**"How do I enable auto-approve for requests?"** → [admin-features/request-approval.md](admin-features/request-approval.md)
+**"How do I customize audiobook folder organization?"** → [settings-pages.md](settings-pages.md#audiobook-organization-template), [phase3/file-organization.md](phase3/file-organization.md#target-structure)
 **"How do I deploy?"** → [deployment/docker.md](deployment/docker.md) (multi-container), [deployment/unified.md](deployment/unified.md) (all-in-one)
 **"How do I use the unified container?"** → [deployment/unified.md](deployment/unified.md)
 **"OAuth redirects to localhost / PUBLIC_URL not working"** → [backend/services/environment.md](backend/services/environment.md)

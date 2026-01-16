@@ -128,6 +128,7 @@ describe('file organizer', () => {
         asin: 'ASIN123',
         coverArtUrl: '/api/cache/thumbnails/cover.jpg',
       },
+      '{author}/{title} ({year}) {asin}',
       { jobId: 'job-1', context: 'organize' }
     );
 
@@ -154,7 +155,7 @@ describe('file organizer', () => {
     const result = await organizer.organize('/downloads/empty', {
       title: 'Book',
       author: 'Author',
-    });
+    }, '{author}/{title}');
 
     expect(result.success).toBe(false);
     expect(result.errors).toContain('No audiobook files found in download');
@@ -192,7 +193,7 @@ describe('file organizer', () => {
     const result = await organizer.organize('/downloads/book', {
       title: 'Book',
       author: 'Author',
-    });
+    }, '{author}/{title}');
 
     expect(result.success).toBe(true);
     expect(result.filesMovedCount).toBe(2);
@@ -235,7 +236,7 @@ describe('file organizer', () => {
     const result = await organizer.organize('/downloads/book', {
       title: 'Book',
       author: 'Author',
-    });
+    }, '{author}/{title}');
 
     const expectedDir = path.join('/media', 'Author', 'Book');
     expect(result.success).toBe(true);
@@ -272,7 +273,7 @@ describe('file organizer', () => {
     const result = await organizer.organize('/downloads/book', {
       title: 'Book',
       author: 'Author',
-    });
+    }, '{author}/{title}');
 
     expect(result.success).toBe(true);
     expect(result.errors).toContain('Metadata tagging skipped: ffmpeg not available');
@@ -319,7 +320,7 @@ describe('file organizer', () => {
       author: 'Author',
       asin: 'ASIN123',
       coverArtUrl: 'https://images.example/cover.jpg',
-    });
+    }, '{author}/{title} {asin}');
 
     expect(result.success).toBe(true);
     expect(result.coverArtFile).toBe(path.join(expectedDir, 'cover.jpg'));
@@ -369,7 +370,7 @@ describe('file organizer', () => {
       title: 'Book',
       author: 'Author',
       coverArtUrl: 'https://images.example/cover.jpg',
-    });
+    }, '{author}/{title}');
 
     expect(result.success).toBe(true);
     expect(result.errors.join(' ')).toContain('Failed to download cover art');
@@ -405,7 +406,7 @@ describe('file organizer', () => {
     const result = await organizer.organize('/downloads/book', {
       title: 'Book',
       author: 'Author',
-    });
+    }, '{author}/{title}');
 
     expect(result.success).toBe(true);
     expect(result.filesMovedCount).toBe(2);
@@ -443,7 +444,7 @@ describe('file organizer', () => {
     const result = await organizer.organize('/downloads/book', {
       title: 'Book',
       author: 'Author',
-    });
+    }, '{author}/{title}');
 
     expect(result.success).toBe(true);
     expect(result.errors.join(' ')).toContain('Failed to tag 1 file(s) with metadata');
@@ -474,7 +475,7 @@ describe('file organizer', () => {
     const result = await organizer.organize('/downloads/book', {
       title: 'Book',
       author: 'Author',
-    });
+    }, '{author}/{title}');
 
     expect(result.success).toBe(true);
     expect(result.errors).toContain('E-book sidecar failed');
@@ -544,7 +545,7 @@ describe('file organizer', () => {
     const result = await organizer.organize('/downloads/book', {
       title: 'Book',
       author: 'Author',
-    });
+    }, '{author}/{title}');
 
     expect(result.success).toBe(true);
     expect(result.errors.join(' ')).toContain('Source file not found');
@@ -576,7 +577,7 @@ describe('file organizer', () => {
     const result = await organizer.organize('/downloads/book', {
       title: 'Book',
       author: 'Author',
-    });
+    }, '{author}/{title}');
 
     expect(result.success).toBe(true);
     expect(result.audioFiles).toEqual([targetPath]);
@@ -609,7 +610,7 @@ describe('file organizer', () => {
     const result = await organizer.organize('/downloads/book', {
       title: 'Book',
       author: 'Author',
-    });
+    }, '{author}/{title}');
 
     expect(result.success).toBe(true);
     expect(result.errors.join(' ')).toContain('Metadata tagging failed');

@@ -23,11 +23,11 @@ const createModelMock = (): PrismaModelMock => ({
   findFirst: vi.fn(),
   findUnique: vi.fn(),
   create: vi.fn(() => Promise.resolve({})),
-  update: vi.fn(),
-  updateMany: vi.fn(),
-  upsert: vi.fn(),
-  delete: vi.fn(),
-  deleteMany: vi.fn(),
+  update: vi.fn(() => Promise.resolve({})),
+  updateMany: vi.fn(() => Promise.resolve({})),
+  upsert: vi.fn(() => Promise.resolve({})),
+  delete: vi.fn(() => Promise.resolve({})),
+  deleteMany: vi.fn(() => Promise.resolve({})),
   count: vi.fn(),
 });
 

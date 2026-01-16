@@ -173,12 +173,21 @@ export function AudiobookCard({
             }
 
             // Check if book is requested and in progress (non-re-requestable statuses)
-            const inProgressStatuses = ['pending', 'awaiting_search', 'searching', 'downloading', 'processing', 'downloaded', 'awaiting_import'];
+            const inProgressStatuses = ['pending', 'awaiting_search', 'searching', 'downloading', 'processing', 'downloaded', 'awaiting_import', 'awaiting_approval', 'denied'];
             if (audiobook.isRequested && audiobook.requestStatus && inProgressStatuses.includes(audiobook.requestStatus)) {
-              // Special text for 'downloaded' status (waiting for Plex scan)
+              // Determine button text based on status
               let buttonText;
+              let buttonClass = 'w-full cursor-not-allowed opacity-75';
+
               if (audiobook.requestStatus === 'downloaded') {
                 buttonText = 'Processing...';
+              } else if (audiobook.requestStatus === 'awaiting_approval') {
+                buttonText = audiobook.requestedByUsername
+                  ? `Pending Approval (${audiobook.requestedByUsername})`
+                  : 'Pending Approval';
+              } else if (audiobook.requestStatus === 'denied') {
+                buttonText = 'Request Denied';
+                buttonClass = 'w-full cursor-not-allowed opacity-75 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30';
               } else {
                 buttonText = audiobook.requestedByUsername
                   ? `Requested by ${audiobook.requestedByUsername}`
@@ -191,7 +200,7 @@ export function AudiobookCard({
                   disabled={true}
                   variant="primary"
                   size="md"
-                  className="w-full cursor-not-allowed opacity-75"
+                  className={buttonClass}
                 >
                   {buttonText}
                 </Button>

@@ -9,52 +9,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { downloadEbook } from '@/lib/services/ebook-scraper';
+import { buildAudiobookPath } from '@/lib/utils/file-organizer';
 import fs from 'fs/promises';
 import path from 'path';
 import { RMABLogger } from '@/lib/utils/logger';
 
 const logger = RMABLogger.create('API.FetchEbook');
-
-/**
- * Sanitize path component (same logic as file-organizer)
- */
-function sanitizePath(name: string): string {
-  return (
-    name
-      .replace(/[<>:"/\\|?*]/g, '')
-      .trim()
-      .replace(/^\.+/, '')
-      .replace(/\.+$/, '')
-      .replace(/\s+/g, ' ')
-      .slice(0, 200)
-  );
-}
-
-/**
- * Build target path (same logic as file-organizer)
- */
-function buildTargetPath(
-  baseDir: string,
-  author: string,
-  title: string,
-  year?: number | null,
-  asin?: string | null
-): string {
-  const authorClean = sanitizePath(author);
-  const titleClean = sanitizePath(title);
-
-  let folderName = titleClean;
-
-  if (year) {
-    folderName = `${folderName} (${year})`;
-  }
-
-  if (asin) {
-    folderName = `${folderName} ${asin}`;
-  }
-
-  return path.join(baseDir, authorClean, folderName);
-}
 
 export async function POST(
   request: NextRequest,
@@ -103,37 +63,43 @@ export async function POST(
         const audiobook = requestRecord.audiobook;
 
         // Get configuration
-        const [mediaDirConfig, formatConfig, baseUrlConfig, flaresolverrConfig] = await Promise.all([
+        const [mediaDirConfig, templateConfig, formatConfig, baseUrlConfig, flaresolverrConfig] = await Promise.all([
           prisma.configuration.findUnique({ where: { key: 'media_dir' } }),
+          prisma.configuration.findUnique({ where: { key: 'audiobook_path_template' } }),
           prisma.configuration.findUnique({ where: { key: 'ebook_sidecar_preferred_format' } }),
           prisma.configuration.findUnique({ where: { key: 'ebook_sidecar_base_url' } }),
           prisma.configuration.findUnique({ where: { key: 'ebook_sidecar_flaresolverr_url' } }),
         ]);
 
         const mediaDir = mediaDirConfig?.value || '/media/audiobooks';
+        const template = templateConfig?.value || '{author}/{title} {asin}';
         const preferredFormat = formatConfig?.value || 'epub';
         const baseUrl = baseUrlConfig?.value || 'https://annas-archive.li';
         const flaresolverrUrl = flaresolverrConfig?.value || undefined;
 
-        // Get year from AudibleCache if available
+        // Fetch year from audible cache if ASIN is available
         let year: number | undefined;
         if (audiobook.audibleAsin) {
-          const audibleCacheData = await prisma.audibleCache.findUnique({
+          const audibleCache = await prisma.audibleCache.findUnique({
             where: { asin: audiobook.audibleAsin },
             select: { releaseDate: true },
           });
-          if (audibleCacheData?.releaseDate) {
-            year = new Date(audibleCacheData.releaseDate).getFullYear();
+          if (audibleCache?.releaseDate) {
+            year = new Date(audibleCache.releaseDate).getFullYear();
           }
         }
 
-        // Build target path
-        const targetPath = buildTargetPath(
+        // Build target path using centralized function
+        const targetPath = buildAudiobookPath(
           mediaDir,
-          audiobook.author,
-          audiobook.title,
-          year,
-          audiobook.audibleAsin
+          template,
+          {
+            author: audiobook.author,
+            title: audiobook.title,
+            narrator: audiobook.narrator || undefined,
+            asin: audiobook.audibleAsin || undefined,
+            year,
+          }
         );
 
         logger.debug('Fetch e-book request', {

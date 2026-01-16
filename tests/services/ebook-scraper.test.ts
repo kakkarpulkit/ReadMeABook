@@ -144,7 +144,8 @@ describe('E-book sidecar', () => {
         return {
           data: {
             pipe: (dest: EventEmitter) => {
-              setTimeout(() => dest.emit('finish'), 0);
+              // Emit synchronously to avoid race condition with download timeout
+              setImmediate(() => dest.emit('finish'));
               return dest;
             },
           },
@@ -192,7 +193,8 @@ describe('E-book sidecar', () => {
         return {
           data: {
             pipe: (dest: EventEmitter) => {
-              setTimeout(() => dest.emit('finish'), 0);
+              // Emit synchronously to avoid race condition with download timeout
+              setImmediate(() => dest.emit('finish'));
               return dest;
             },
           },
@@ -335,7 +337,8 @@ describe('E-book sidecar', () => {
         return {
           data: {
             pipe: (dest: EventEmitter) => {
-              setTimeout(() => dest.emit('finish'), 0);
+              // Emit synchronously to avoid race condition with download timeout
+              setImmediate(() => dest.emit('finish'));
               return dest;
             },
           },
@@ -619,7 +622,8 @@ describe('E-book sidecar', () => {
         return {
           data: {
             pipe: (dest: EventEmitter) => {
-              setTimeout(() => dest.emit('finish'), 0);
+              // Emit synchronously to avoid race condition with download timeout
+              setImmediate(() => dest.emit('finish'));
               return dest;
             },
           },

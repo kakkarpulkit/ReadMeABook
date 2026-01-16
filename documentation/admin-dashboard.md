@@ -7,6 +7,7 @@ Comprehensive overview of system metrics, active requests, download monitoring, 
 ## Sections
 
 - **Metrics:** Total requests, active downloads, completed/failed requests, total users, system health
+- **Requests Awaiting Approval:** Grid of requests pending admin approval (approve/deny buttons, auto-refresh)
 - **Active Downloads:** Real-time table with title, progress, speed, ETA
 - **Recent Requests:** Last 50 with status and timestamps
 - **Quick Actions:** Links to settings, users, scheduled jobs, system logs
@@ -27,12 +28,26 @@ Comprehensive overview of system metrics, active requests, download monitoring, 
 **GET /api/admin/requests/recent**
 - Request ID, title, user, status, created/completed dates
 
+**GET /api/admin/requests/pending-approval**
+- Requests with status 'awaiting_approval', includes audiobook + user details
+- Returns: requests array, count
+
+**POST /api/admin/requests/[id]/approve**
+- Action: 'approve' (set status to 'pending', trigger search) or 'deny' (set status to 'denied')
+- Validates request is in 'awaiting_approval' status
+
 **GET /api/admin/users**
-- User ID, Plex ID, username, email, role, avatar, created/updated dates, last login, request count
+- User ID, Plex ID, username, email, role, avatar, created/updated dates, last login, request count, autoApproveRequests
 
 **PUT /api/admin/users/[id]**
-- Update user role (user/admin)
+- Update user role (user/admin), autoApproveRequests (true/false/null)
 - Prevents self-demotion
+
+**GET /api/admin/settings/auto-approve**
+- Get global auto-approve setting (boolean)
+
+**PATCH /api/admin/settings/auto-approve**
+- Update global auto-approve setting (boolean)
 
 **GET /api/admin/logs**
 - Query params: page, limit, status, type
@@ -45,6 +60,14 @@ Comprehensive overview of system metrics, active requests, download monitoring, 
 - Back to Home button in header
 - Admin role required
 - Real-time progress updates
+- **Requests Awaiting Approval Section:**
+  - Only visible when pending approval requests exist
+  - Grid layout (3 columns on desktop)
+  - Book cards with cover, title, author, user info, timestamp
+  - Approve (green) and Deny (red) buttons
+  - Loading states during approval/denial actions
+  - Toast notifications for success/errors
+  - Mutates pending-approval, recent requests, metrics caches on action
 
 ## Navigation
 
@@ -55,11 +78,18 @@ Comprehensive overview of system metrics, active requests, download monitoring, 
 
 ## User Management Features
 
-- List all users with avatar, email, role, request count, last login
+- List all users with avatar, email, role, request count, last login, autoApproveRequests
 - Edit user roles (user/admin)
 - Cannot change own role (security)
 - Shows request count per user
 - Role badges (purple for admin, gray for user)
+- **Global Auto-Approve Toggle:**
+  - Checkbox at top: "Auto-approve all requests by default"
+  - Updates Configuration.auto_approve_requests
+- **Per-User Auto-Approve Control:**
+  - Dropdown: Use Global (null), Always Auto-Approve (true), Always Require Approval (false)
+  - Updates User.autoApproveRequests
+  - Shows effective setting (considers global + per-user)
 
 ## System Logs Features
 

@@ -9,6 +9,7 @@ import { prisma } from '../db';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { RMABLogger } from '../utils/logger';
+import { buildAudiobookPath } from '../utils/file-organizer';
 
 const logger = RMABLogger.create('RequestDelete');
 
@@ -52,6 +53,7 @@ export async function deleteRequest(
             id: true,
             title: true,
             author: true,
+            narrator: true,
             audibleAsin: true,
             plexGuid: true,
             absItemId: true,
@@ -190,42 +192,34 @@ export async function deleteRequest(
       const { getConfigService } = await import('./config.service');
       const configService = getConfigService();
       const mediaDir = (await configService.get('media_dir')) || '/media/audiobooks';
+      const template = (await configService.get('audiobook_path_template')) || '{author}/{title} {asin}';
 
-      // Sanitize author and title for path (same logic as file-organizer.ts)
-      const sanitizedAuthor = sanitizePath(request.audiobook.author);
-      const sanitizedTitle = sanitizePath(request.audiobook.title);
-
-      // Build folder name with optional year and ASIN (matches file-organizer.ts logic)
-      let folderName = sanitizedTitle;
-
-      // Get ASIN and check for year in AudibleCache
-      const asin = request.audiobook.audibleAsin;
+      // Fetch year from audible cache if ASIN is available
       let year: number | undefined;
-
-      if (asin) {
-        // Try to get year from AudibleCache if it exists
+      if (request.audiobook.audibleAsin) {
         const audibleCache = await prisma.audibleCache.findUnique({
-          where: { asin },
+          where: { asin: request.audiobook.audibleAsin },
           select: { releaseDate: true },
         });
-
         if (audibleCache?.releaseDate) {
           year = new Date(audibleCache.releaseDate).getFullYear();
         }
       }
 
-      if (year) {
-        folderName = `${folderName} (${year})`;
-      }
+      // Build path using centralized function
+      const titleFolderPath = buildAudiobookPath(
+        mediaDir,
+        template,
+        {
+          author: request.audiobook.author,
+          title: request.audiobook.title,
+          narrator: request.audiobook.narrator || undefined,
+          asin: request.audiobook.audibleAsin || undefined,
+          year,
+        }
+      );
 
-      if (asin) {
-        folderName = `${folderName} ${asin}`;
-      }
-
-      // Build path: [media_dir]/[author]/[title (year) asin]/
-      const titleFolderPath = path.join(mediaDir, sanitizedAuthor, folderName);
-
-      // Check if folder exists
+      // Check if folder exists and delete it
       try {
         await fs.access(titleFolderPath);
 
@@ -235,20 +229,9 @@ export async function deleteRequest(
         logger.info(`Deleted media directory: ${titleFolderPath}`);
         filesDeleted = true;
       } catch (accessError) {
-        // Folder doesn't exist - try without year/ASIN (fallback for older files)
-        const fallbackPath = path.join(mediaDir, sanitizedAuthor, sanitizedTitle);
-        try {
-          await fs.access(fallbackPath);
-          await fs.rm(fallbackPath, { recursive: true, force: true });
-          logger.info(`Deleted media directory (fallback path): ${fallbackPath}`);
-          filesDeleted = true;
-        } catch (fallbackError) {
-          // Neither path exists - that's okay
-          logger.info(
-            `Media directory not found (tried: ${titleFolderPath}, ${fallbackPath})`
-          );
-          filesDeleted = false;
-        }
+        // Folder doesn't exist - that's okay
+        logger.info(`Media directory not found: ${titleFolderPath}`);
+        filesDeleted = false;
       }
     } catch (error) {
       logger.error(
@@ -264,6 +247,23 @@ export async function deleteRequest(
       const { getConfigService } = await import('./config.service');
       const configService = getConfigService();
       const backendMode = await configService.getBackendMode();
+
+      // If backend is Audiobookshelf, delete the library item from ABS
+      if (backendMode === 'audiobookshelf' && request.audiobook.absItemId) {
+        try {
+          const { deleteABSItem } = await import('../services/audiobookshelf/api');
+          await deleteABSItem(request.audiobook.absItemId);
+          logger.info(
+            `Deleted Audiobookshelf library item ${request.audiobook.absItemId} for "${request.audiobook.title}"`
+          );
+        } catch (absError) {
+          logger.error(
+            `Error deleting Audiobookshelf library item ${request.audiobook.absItemId}`,
+            { error: absError instanceof Error ? absError.message : String(absError) }
+          );
+          // Continue with deletion even if ABS deletion fails
+        }
+      }
 
       // Delete ALL plex_library records matching this audiobook's title and author
       // This handles cases where there might be duplicate library records
@@ -376,22 +376,4 @@ export async function deleteRequest(
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
-}
-
-/**
- * Sanitize a path component (removes invalid characters)
- */
-function sanitizePath(input: string): string {
-  return (
-    input
-      // Remove invalid path characters
-      .replace(/[<>:"/\\|?*]/g, '')
-      // Trim dots and spaces from start/end
-      .replace(/^[.\s]+|[.\s]+$/g, '')
-      // Collapse multiple spaces
-      .replace(/\s+/g, ' ')
-      // Limit length
-      .substring(0, 200)
-      .trim()
-  );
 }

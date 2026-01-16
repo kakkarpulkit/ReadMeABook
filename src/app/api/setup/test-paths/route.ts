@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { RMABLogger } from '@/lib/utils/logger';
+import { validateTemplate, generateMockPreviews } from '@/lib/utils/path-template.util';
 
 const logger = RMABLogger.create('API.Setup.TestPaths');
 
@@ -45,7 +46,7 @@ async function testPath(dirPath: string): Promise<boolean> {
 
 export async function POST(request: NextRequest) {
   try {
-    const { downloadDir, mediaDir } = await request.json();
+    const { downloadDir, mediaDir, audiobookPathTemplate } = await request.json();
 
     if (!downloadDir || !mediaDir) {
       return NextResponse.json(
@@ -57,6 +58,26 @@ export async function POST(request: NextRequest) {
     // Test both paths
     const downloadDirValid = await testPath(downloadDir);
     const mediaDirValid = await testPath(mediaDir);
+
+    // Validate template if provided
+    let templateValidation: {
+      isValid: boolean;
+      error?: string;
+      previewPaths?: string[];
+    } | undefined;
+
+    if (audiobookPathTemplate) {
+      const validation = validateTemplate(audiobookPathTemplate);
+      templateValidation = {
+        isValid: validation.valid,
+        error: validation.error,
+      };
+
+      // Generate previews only if template is valid
+      if (validation.valid) {
+        templateValidation.previewPaths = generateMockPreviews(audiobookPathTemplate);
+      }
+    }
 
     const success = downloadDirValid && mediaDirValid;
 
@@ -71,16 +92,28 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: false,
-        downloadDirValid,
-        mediaDirValid,
+        downloadDir: {
+          valid: downloadDirValid,
+          error: downloadDirValid ? undefined : 'Download directory path is invalid or parent mount is not writable',
+        },
+        mediaDir: {
+          valid: mediaDirValid,
+          error: mediaDirValid ? undefined : 'Media directory path is invalid or parent mount is not writable',
+        },
+        template: templateValidation,
         error: errors.join('. '),
       });
     }
 
     return NextResponse.json({
       success: true,
-      downloadDirValid,
-      mediaDirValid,
+      downloadDir: {
+        valid: downloadDirValid,
+      },
+      mediaDir: {
+        valid: mediaDirValid,
+      },
+      template: templateValidation,
       message: 'Directories are ready and writable (created if needed)',
     });
   } catch (error) {

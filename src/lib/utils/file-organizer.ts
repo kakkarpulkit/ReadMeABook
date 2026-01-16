@@ -21,6 +21,7 @@ import {
 } from './chapter-merger';
 import { prisma } from '../db';
 import { downloadEbook } from '../services/ebook-scraper';
+import { substituteTemplate, type TemplateVariables } from './path-template.util';
 
 export interface AudiobookMetadata {
   title: string;
@@ -66,6 +67,7 @@ export class FileOrganizer {
   async organize(
     downloadPath: string,
     audiobook: AudiobookMetadata,
+    template: string,
     loggerConfig?: LoggerConfig
   ): Promise<OrganizationResult> {
     // Create logger if config provided
@@ -268,10 +270,12 @@ export class FileOrganizer {
       // Build target directory
       const targetPath = this.buildTargetPath(
         this.mediaDir,
+        template,
         audiobook.author,
         audiobook.title,
-        audiobook.year,
-        audiobook.asin
+        audiobook.narrator,
+        audiobook.asin,
+        audiobook.year
       );
 
       await logger?.info(`Target path: ${targetPath}`);
@@ -542,31 +546,28 @@ export class FileOrganizer {
   }
 
   /**
-   * Build target path with sanitized names
-   * Format: Author/Title (Year) ASIN or Author/Title ASIN or Author/Title (Year)
+   * Build target path using template-based path building
+   * Uses the path template engine to substitute variables and sanitize paths
    */
   private buildTargetPath(
     baseDir: string,
+    template: string,
     author: string,
     title: string,
-    year?: number,
-    asin?: string
+    narrator?: string,
+    asin?: string,
+    year?: number
   ): string {
-    const authorClean = this.sanitizePath(author);
-    const titleClean = this.sanitizePath(title);
+    const variables: TemplateVariables = {
+      author,
+      title,
+      narrator,
+      asin,
+      year,
+    };
 
-    // Build folder name with optional year and ASIN
-    let folderName = titleClean;
-
-    if (year) {
-      folderName = `${folderName} (${year})`;
-    }
-
-    if (asin) {
-      folderName = `${folderName} ${asin}`;
-    }
-
-    return path.join(baseDir, authorClean, folderName);
+    const relativePath = substituteTemplate(template, variables);
+    return path.join(baseDir, relativePath);
   }
 
   /**
@@ -688,4 +689,40 @@ export async function getFileOrganizer(): Promise<FileOrganizer> {
   const tempDir = process.env.TEMP_DIR || '/tmp/readmeabook';
 
   return new FileOrganizer(mediaDir, tempDir);
+}
+
+/**
+ * Build audiobook path using template-based path building
+ * Standalone function for use by other modules (e.g., fetch-ebook route, request-delete service)
+ *
+ * @param baseDir - Base directory for audiobooks (e.g., /media/audiobooks)
+ * @param template - Path template string (e.g., "{author}/{title} {asin}")
+ * @param variables - Object containing variable values (author, title, narrator, asin)
+ * @returns Full path to audiobook directory
+ *
+ * @example
+ * ```typescript
+ * const path = buildAudiobookPath(
+ *   '/media/audiobooks',
+ *   '{author}/{title} {asin}',
+ *   { author: 'Brandon Sanderson', title: 'Mistborn', asin: 'B002UZMLXM' }
+ * );
+ * // Returns: "/media/audiobooks/Brandon Sanderson/Mistborn B002UZMLXM"
+ * ```
+ */
+export function buildAudiobookPath(
+  baseDir: string,
+  template: string,
+  variables: { author: string; title: string; narrator?: string; asin?: string; year?: number }
+): string {
+  const templateVars: TemplateVariables = {
+    author: variables.author,
+    title: variables.title,
+    narrator: variables.narrator,
+    asin: variables.asin,
+    year: variables.year,
+  };
+
+  const relativePath = substituteTemplate(template, templateVars);
+  return path.join(baseDir, relativePath);
 }

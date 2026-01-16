@@ -19,7 +19,7 @@ const configServiceMock = vi.hoisted(() => ({
   getBackendMode: vi.fn(),
 }));
 const jobQueueMock = vi.hoisted(() => ({
-  addSearchJob: vi.fn(),
+  addSearchJob: vi.fn().mockResolvedValue(undefined),
 }));
 const bookdateHelpersMock = vi.hoisted(() => ({
   buildAIPrompt: vi.fn(),

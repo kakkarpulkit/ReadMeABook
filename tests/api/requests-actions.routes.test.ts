@@ -185,6 +185,7 @@ describe('Request action routes', () => {
   it('downloads ebook and returns success', async () => {
     configState.values.set('ebook_sidecar_enabled', 'true');
     configState.values.set('media_dir', '/media/audiobooks');
+    configState.values.set('audiobook_path_template', '{author}/{title} {asin}');
     configState.values.set('ebook_sidecar_preferred_format', 'epub');
     configState.values.set('ebook_sidecar_base_url', 'https://ebooks.example');
     configState.values.set('ebook_sidecar_flaresolverr_url', 'http://flaresolverr');
@@ -199,7 +200,7 @@ describe('Request action routes', () => {
     downloadEbookMock.mockResolvedValueOnce({
       success: true,
       format: 'epub',
-      filePath: '/media/audiobooks/Author/Title (2022) ASIN123/Title.epub',
+      filePath: '/media/audiobooks/Author/Title ASIN123/Title.epub',
     });
 
     const { POST } = await import('@/app/api/requests/[id]/fetch-ebook/route');
@@ -211,7 +212,7 @@ describe('Request action routes', () => {
       'ASIN123',
       'Title',
       'Author',
-      expect.stringContaining('Title (2022) ASIN123'),
+      expect.stringContaining('Title ASIN123'),
       'epub',
       'https://ebooks.example',
       undefined,
