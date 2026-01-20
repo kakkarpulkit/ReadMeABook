@@ -9,11 +9,15 @@ import { createPrismaMock } from '../helpers/prisma';
 const prismaMock = createPrismaMock();
 const libraryServiceMock = vi.hoisted(() => ({
   getRecentlyAdded: vi.fn(),
+  getCoverCachingParams: vi.fn(),
 }));
 const configMock = vi.hoisted(() => ({
   getBackendMode: vi.fn(),
   getMany: vi.fn(),
   get: vi.fn(),
+}));
+const thumbnailCacheServiceMock = vi.hoisted(() => ({
+  cacheLibraryThumbnail: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -34,6 +38,10 @@ vi.mock('@/lib/utils/audiobook-matcher', () => ({
 
 vi.mock('@/lib/services/audiobookshelf/api', () => ({
   triggerABSItemMatch: vi.fn(),
+}));
+
+vi.mock('@/lib/services/thumbnail-cache.service', () => ({
+  getThumbnailCacheService: () => thumbnailCacheServiceMock,
 }));
 
 describe('processPlexRecentlyAddedCheck', () => {
@@ -64,6 +72,15 @@ describe('processPlexRecentlyAddedCheck', () => {
       plex_audiobook_library_id: 'lib-1',
     });
     configMock.get.mockResolvedValue('lib-1');
+
+    libraryServiceMock.getCoverCachingParams.mockResolvedValue({
+      backendBaseUrl: 'http://plex',
+      authToken: 'token',
+      backendMode: 'plex',
+    });
+
+    thumbnailCacheServiceMock.cacheLibraryThumbnail.mockResolvedValue('/app/cache/library/test.jpg');
+
     libraryServiceMock.getRecentlyAdded.mockResolvedValue([
       {
         id: 'rating-1',
@@ -111,6 +128,15 @@ describe('processPlexRecentlyAddedCheck', () => {
       'audiobookshelf.library_id': 'abs-lib',
     });
     configMock.get.mockResolvedValue('abs-lib');
+
+    libraryServiceMock.getCoverCachingParams.mockResolvedValue({
+      backendBaseUrl: 'http://abs',
+      authToken: 'token',
+      backendMode: 'audiobookshelf',
+    });
+
+    thumbnailCacheServiceMock.cacheLibraryThumbnail.mockResolvedValue('/app/cache/library/test.jpg');
+
     libraryServiceMock.getRecentlyAdded.mockResolvedValue([
       {
         id: 'abs-1',

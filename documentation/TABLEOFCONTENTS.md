@@ -70,7 +70,11 @@
 ## BookDate (AI Recommendations)
 - **AI-powered recommendations, swipe interface** → [features/bookdate.md](features/bookdate.md)
 - **Configuration, OpenAI/Claude integration** → [features/bookdate.md](features/bookdate.md)
+- **Library scopes (full, rated, favorites)** → [features/bookdate.md](features/bookdate.md)
+- **Pick my favorites (book selection modal)** → [features/bookdate.md](features/bookdate.md)
 - **Setup wizard integration, settings** → [features/bookdate.md](features/bookdate.md)
+- **Card stack animations (3-card stack, swipe animations)** → [features/bookdate-animations.md](features/bookdate-animations.md)
+- **Library thumbnail caching** → [features/library-thumbnail-cache.md](features/library-thumbnail-cache.md)
 
 ## Admin Features
 - **Dashboard (metrics, downloads, requests)** → [admin-dashboard.md](admin-dashboard.md)
@@ -109,7 +113,10 @@
 **"What environment variables do I need?"** → [backend/services/environment.md](backend/services/environment.md)
 **"How does chapter merging work?"** → [features/chapter-merging.md](features/chapter-merging.md)
 **"How does logging work?"** → [backend/services/logging.md](backend/services/logging.md)
+**"How do BookDate card stack animations work?"** → [features/bookdate-animations.md](features/bookdate-animations.md)
 **"How does Audiobookshelf integration work?"** → [features/audiobookshelf-integration.md](features/audiobookshelf-integration.md) (PRD only, not implemented)
 **"How do I use OIDC/Authentik/Keycloak?"** → [features/audiobookshelf-integration.md](features/audiobookshelf-integration.md) (PRD only, not implemented)
 **"How does manual user registration work?"** → [features/audiobookshelf-integration.md](features/audiobookshelf-integration.md) (PRD only, not implemented)
 **"How do I switch from Plex to Audiobookshelf?"** → [features/audiobookshelf-integration.md](features/audiobookshelf-integration.md) (PRD only, not implemented)
+**"How does library thumbnail caching work?"** → [features/library-thumbnail-cache.md](features/library-thumbnail-cache.md)
+**"Why do BookDate library books show placeholders?"** → [features/library-thumbnail-cache.md](features/library-thumbnail-cache.md)

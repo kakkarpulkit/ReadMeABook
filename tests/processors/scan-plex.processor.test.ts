@@ -7,11 +7,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPrismaMock } from '../helpers/prisma';
 
 const prismaMock = createPrismaMock();
-const libraryServiceMock = vi.hoisted(() => ({ getLibraryItems: vi.fn() }));
+const libraryServiceMock = vi.hoisted(() => ({
+  getLibraryItems: vi.fn(),
+  getCoverCachingParams: vi.fn(),
+}));
 const configMock = vi.hoisted(() => ({
   getBackendMode: vi.fn(),
   getPlexConfig: vi.fn(),
   get: vi.fn(),
+}));
+const thumbnailCacheServiceMock = vi.hoisted(() => ({
+  cacheLibraryThumbnail: vi.fn(),
 }));
 
 vi.mock('@/lib/utils/audiobook-matcher', () => ({
@@ -34,6 +40,10 @@ vi.mock('@/lib/services/config.service', () => ({
   getConfigService: () => configMock,
 }));
 
+vi.mock('@/lib/services/thumbnail-cache.service', () => ({
+  getThumbnailCacheService: () => thumbnailCacheServiceMock,
+}));
+
 describe('processScanPlex', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,6 +57,14 @@ describe('processScanPlex', () => {
       libraryId: 'lib-1',
       machineIdentifier: 'machine',
     });
+
+    libraryServiceMock.getCoverCachingParams.mockResolvedValue({
+      backendBaseUrl: 'http://plex',
+      authToken: 'token',
+      backendMode: 'plex',
+    });
+
+    thumbnailCacheServiceMock.cacheLibraryThumbnail.mockResolvedValue('/app/cache/library/test.jpg');
 
     libraryServiceMock.getLibraryItems.mockResolvedValue([
       {
@@ -118,6 +136,12 @@ describe('processScanPlex', () => {
     configMock.getBackendMode.mockResolvedValue('audiobookshelf');
     configMock.get.mockResolvedValue(null);
 
+    libraryServiceMock.getCoverCachingParams.mockResolvedValue({
+      backendBaseUrl: 'http://abs',
+      authToken: 'token',
+      backendMode: 'audiobookshelf',
+    });
+
     const { processScanPlex } = await import('@/lib/processors/scan-plex.processor');
 
     await expect(processScanPlex({ jobId: 'job-2' })).rejects.toThrow(
@@ -134,6 +158,14 @@ describe('processScanPlex', () => {
       libraryId: 'lib-1',
       machineIdentifier: 'machine',
     });
+
+    libraryServiceMock.getCoverCachingParams.mockResolvedValue({
+      backendBaseUrl: 'http://plex',
+      authToken: 'token',
+      backendMode: 'plex',
+    });
+
+    thumbnailCacheServiceMock.cacheLibraryThumbnail.mockResolvedValue('/app/cache/library/test.jpg');
 
     libraryServiceMock.getLibraryItems.mockResolvedValue([
       {
@@ -204,6 +236,14 @@ describe('processScanPlex', () => {
   it('matches audiobookshelf requests and triggers metadata match', async () => {
     configMock.getBackendMode.mockResolvedValue('audiobookshelf');
     configMock.get.mockResolvedValue('abs-lib');
+
+    libraryServiceMock.getCoverCachingParams.mockResolvedValue({
+      backendBaseUrl: 'http://abs',
+      authToken: 'token',
+      backendMode: 'audiobookshelf',
+    });
+
+    thumbnailCacheServiceMock.cacheLibraryThumbnail.mockResolvedValue('/app/cache/library/test.jpg');
 
     libraryServiceMock.getLibraryItems.mockResolvedValue([]);
 

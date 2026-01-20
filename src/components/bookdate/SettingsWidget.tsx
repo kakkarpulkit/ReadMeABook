@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { BookPickerModal } from './BookPickerModal';
 
 interface SettingsWidgetProps {
   isOpen: boolean;
@@ -15,7 +16,9 @@ interface SettingsWidgetProps {
 }
 
 export function SettingsWidget({ isOpen, onClose, isOnboarding = false, onOnboardingComplete }: SettingsWidgetProps) {
-  const [libraryScope, setLibraryScope] = useState<'full' | 'rated'>('full');
+  const [libraryScope, setLibraryScope] = useState<'full' | 'rated' | 'favorites'>('full');
+  const [favoriteBookIds, setFavoriteBookIds] = useState<string[]>([]);
+  const [showBookPicker, setShowBookPicker] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -52,6 +55,7 @@ export function SettingsWidget({ isOpen, onClose, isOnboarding = false, onOnboar
 
       const data = await response.json();
       setLibraryScope(data.libraryScope || 'full');
+      setFavoriteBookIds(data.favoriteBookIds || []);
       setCustomPrompt(data.customPrompt || '');
       setBackendCapabilities(data.backendCapabilities || { supportsRatings: true });
     } catch (error: any) {
@@ -63,6 +67,12 @@ export function SettingsWidget({ isOpen, onClose, isOnboarding = false, onOnboar
   };
 
   const handleSave = async () => {
+    // Validate favorites scope
+    if (libraryScope === 'favorites' && favoriteBookIds.length === 0) {
+      setError('Please select at least 1 favorite book');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     setSuccessMessage(null);
@@ -78,6 +88,7 @@ export function SettingsWidget({ isOpen, onClose, isOnboarding = false, onOnboar
         },
         body: JSON.stringify({
           libraryScope,
+          favoriteBookIds: libraryScope === 'favorites' ? favoriteBookIds : undefined,
           customPrompt: trimmedPrompt || null, // Send null if empty
           onboardingComplete: isOnboarding ? true : undefined,
         }),
@@ -179,7 +190,7 @@ export function SettingsWidget({ isOpen, onClose, isOnboarding = false, onOnboar
                       name="libraryScope"
                       value="full"
                       checked={libraryScope === 'full'}
-                      onChange={(e) => setLibraryScope(e.target.value as 'full' | 'rated')}
+                      onChange={(e) => setLibraryScope(e.target.value as 'full' | 'rated' | 'favorites')}
                       className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500"
                     />
                     <div className="ml-3 flex-1">
@@ -200,7 +211,7 @@ export function SettingsWidget({ isOpen, onClose, isOnboarding = false, onOnboar
                         name="libraryScope"
                         value="rated"
                         checked={libraryScope === 'rated'}
-                        onChange={(e) => setLibraryScope(e.target.value as 'full' | 'rated')}
+                        onChange={(e) => setLibraryScope(e.target.value as 'full' | 'rated' | 'favorites')}
                         className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500"
                       />
                       <div className="ml-3 flex-1">
@@ -214,19 +225,52 @@ export function SettingsWidget({ isOpen, onClose, isOnboarding = false, onOnboar
                     </label>
                   )}
 
-                  {/* Show info message if ratings not supported */}
-                  {!backendCapabilities.supportsRatings && (
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                      Note: Your backend does not support user ratings. Only "Full Library" scope is available.
+                  {/* Pick My Favorites */}
+                  <label className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50 dark:hover:bg-gray-700/50 ${libraryScope === 'favorites' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-600'}`}>
+                    <input
+                      type="radio"
+                      name="libraryScope"
+                      value="favorites"
+                      checked={libraryScope === 'favorites'}
+                      onChange={(e) => {
+                        setLibraryScope('favorites');
+                        setShowBookPicker(true); // Auto-open book picker
+                      }}
+                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="ml-3 flex-1">
+                      <div className="font-medium text-gray-900 dark:text-white">
+                        Pick my favorites
+                      </div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Select up to 25 books as your personalized library
+                        {favoriteBookIds.length > 0 && (
+                          <span className="ml-2 text-blue-600 dark:text-blue-400 font-medium">
+                            ({favoriteBookIds.length} selected)
+                          </span>
+                        )}
+                      </div>
+                      {libraryScope === 'favorites' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setShowBookPicker(true);
+                          }}
+                          className="mt-2 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
+                        >
+                          {favoriteBookIds.length > 0 ? 'Change Selection' : 'Choose Books'}
+                        </button>
+                      )}
                     </div>
-                  )}
+                  </label>
                 </div>
               </div>
 
               {/* Custom Prompt */}
               <div className="mb-6">
                 <label htmlFor="customPrompt" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Custom Prompt Modifier
+                  Special Requests
                   <span className="text-gray-500 dark:text-gray-400 font-normal ml-2">
                     (Optional)
                   </span>
@@ -268,6 +312,15 @@ export function SettingsWidget({ isOpen, onClose, isOnboarding = false, onOnboar
           )}
         </div>
       </div>
+
+      {/* Book Picker Modal */}
+      <BookPickerModal
+        isOpen={showBookPicker}
+        onClose={() => setShowBookPicker(false)}
+        selectedIds={favoriteBookIds}
+        onConfirm={(ids) => setFavoriteBookIds(ids)}
+        maxSelection={25}
+      />
     </>
   );
 }

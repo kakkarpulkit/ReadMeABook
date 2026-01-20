@@ -45,7 +45,8 @@ model User {
   registrationStatus String? @default("approved") @map("registration_status") // 'pending_approval' | 'approved' | 'rejected'
 
   // BookDate per-user preferences
-  bookDateLibraryScope       String? @default("full") @map("bookdate_library_scope") // 'full' | 'rated'
+  bookDateLibraryScope       String? @default("full") @map("bookdate_library_scope") // 'full' | 'rated' | 'favorites'
+  bookDateFavoriteBookIds    String? @map("bookdate_favorite_book_ids") @db.Text // JSON array of PlexLibrary IDs (max 25)
   bookDateCustomPrompt       String? @map("bookdate_custom_prompt") @db.Text
   bookDateOnboardingComplete Boolean @default(false) @map("bookdate_onboarding_complete")
 
@@ -130,8 +131,9 @@ model PlexLibrary {
   isbn String? // ISBN (10 or 13) - for additional matching capability
 
   // File information
-  filePath String? @map("file_path") @db.Text
-  thumbUrl String? @map("thumb_url") @db.Text // Plex thumbnail URL
+  filePath            String? @map("file_path") @db.Text
+  thumbUrl            String? @map("thumb_url") @db.Text // Plex thumbnail URL
+  cachedLibraryCoverPath String? @map("cached_library_cover_path") @db.Text // Local path to cached library cover image
 
   // Plex metadata
   plexLibraryId String    @map("plex_library_id") // Which Plex library contains this

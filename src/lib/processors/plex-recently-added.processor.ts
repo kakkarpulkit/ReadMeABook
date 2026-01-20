@@ -8,6 +8,7 @@
 import { prisma } from '../db';
 import { RMABLogger } from '../utils/logger';
 import { getLibraryService } from '../services/library';
+import { getThumbnailCacheService } from '../services/thumbnail-cache.service';
 
 export interface PlexRecentlyAddedPayload {
   jobId?: string;
@@ -66,12 +67,16 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
 
   // Get library service (automatically selects Plex or Audiobookshelf)
   const libraryService = await getLibraryService();
+  const thumbnailCacheService = getThumbnailCacheService();
 
   try {
     // Get configured library ID
     const libraryId = backendMode === 'audiobookshelf'
       ? await configService.get('audiobookshelf.library_id')
       : await configService.get('plex_audiobook_library_id');
+
+    // Get cover caching parameters (needed for thumbnail caching)
+    const coverCachingParams = await (libraryService as any).getCoverCachingParams();
 
     // Fetch top 10 recently added items using abstraction layer
     const recentItems = await libraryService.getRecentlyAdded(libraryId!, 10);
@@ -93,7 +98,7 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
       });
 
       if (!existing) {
-        await prisma.plexLibrary.create({
+        const newLibraryItem = await prisma.plexLibrary.create({
           data: {
             plexGuid: item.externalId,
             plexRatingKey: item.id,
@@ -111,6 +116,26 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
             lastScannedAt: new Date(),
           },
         });
+
+        // Cache library cover (synchronous with smart skip-if-exists logic)
+        if (item.coverUrl && item.externalId) {
+          const cachedPath = await thumbnailCacheService.cacheLibraryThumbnail(
+            item.externalId,
+            item.coverUrl,
+            coverCachingParams.backendBaseUrl,
+            coverCachingParams.authToken,
+            coverCachingParams.backendMode
+          );
+
+          // Update database with cached path if successful
+          if (cachedPath) {
+            await prisma.plexLibrary.update({
+              where: { id: newLibraryItem.id },
+              data: { cachedLibraryCoverPath: cachedPath },
+            });
+          }
+        }
+
         newCount++;
         logger.info(`New item added: ${item.title} by ${item.author}`);
       } else {
@@ -129,6 +154,26 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
             lastScannedAt: new Date(),
           },
         });
+
+        // Cache library cover (synchronous with smart skip-if-exists logic)
+        if (item.coverUrl && item.externalId) {
+          const cachedPath = await thumbnailCacheService.cacheLibraryThumbnail(
+            item.externalId,
+            item.coverUrl,
+            coverCachingParams.backendBaseUrl,
+            coverCachingParams.authToken,
+            coverCachingParams.backendMode
+          );
+
+          // Update database with cached path if successful
+          if (cachedPath) {
+            await prisma.plexLibrary.update({
+              where: { id: existing.id },
+              data: { cachedLibraryCoverPath: cachedPath },
+            });
+          }
+        }
+
         updatedCount++;
       }
     }

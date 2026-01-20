@@ -221,6 +221,28 @@ export class PlexLibraryService implements ILibraryService {
   }
 
   /**
+   * Get parameters needed for caching library covers
+   * @returns Parameters for ThumbnailCacheService.cacheLibraryThumbnail()
+   */
+  async getCoverCachingParams(): Promise<{
+    backendBaseUrl: string;
+    authToken: string;
+    backendMode: 'plex' | 'audiobookshelf';
+  }> {
+    const config = await this.configService.getPlexConfig();
+
+    if (!config.serverUrl || !config.authToken) {
+      throw new Error('Plex server configuration is incomplete');
+    }
+
+    return {
+      backendBaseUrl: config.serverUrl,
+      authToken: config.authToken,
+      backendMode: 'plex',
+    };
+  }
+
+  /**
    * Map Plex audiobook to generic LibraryItem interface
    */
   private mapPlexItemToLibraryItem(plexItem: any): LibraryItem {

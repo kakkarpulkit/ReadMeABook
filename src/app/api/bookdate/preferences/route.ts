@@ -24,6 +24,7 @@ async function getPreferences(req: AuthenticatedRequest) {
       where: { id: userId },
       select: {
         bookDateLibraryScope: true,
+        bookDateFavoriteBookIds: true,
         bookDateCustomPrompt: true,
         bookDateOnboardingComplete: true,
       },
@@ -49,6 +50,7 @@ async function getPreferences(req: AuthenticatedRequest) {
 
     return NextResponse.json({
       libraryScope: effectiveScope,
+      favoriteBookIds: user.bookDateFavoriteBookIds ? JSON.parse(user.bookDateFavoriteBookIds) : [],
       customPrompt: user.bookDateCustomPrompt || '', // Always return empty string for UI
       onboardingComplete: user.bookDateOnboardingComplete || false,
       backendCapabilities: {
@@ -75,12 +77,28 @@ async function updatePreferences(req: AuthenticatedRequest) {
 
     // Parse request body
     const body = await req.json();
-    const { libraryScope, customPrompt, onboardingComplete } = body;
+    const { libraryScope, favoriteBookIds, customPrompt, onboardingComplete } = body;
 
     // Validate library scope
-    if (libraryScope && !['full', 'rated'].includes(libraryScope)) {
+    if (libraryScope && !['full', 'rated', 'favorites'].includes(libraryScope)) {
       return NextResponse.json(
-        { error: 'Invalid library scope. Must be "full" or "rated"' },
+        { error: 'Invalid library scope. Must be "full", "rated", or "favorites"' },
+        { status: 400 }
+      );
+    }
+
+    // Validate favorites scope requirements
+    if (libraryScope === 'favorites' && (!favoriteBookIds || favoriteBookIds.length === 0)) {
+      return NextResponse.json(
+        { error: 'Favorites scope requires at least 1 favorite book selected' },
+        { status: 400 }
+      );
+    }
+
+    // Validate favorite books limit
+    if (favoriteBookIds && favoriteBookIds.length > 25) {
+      return NextResponse.json(
+        { error: 'Maximum 25 favorite books allowed' },
         { status: 400 }
       );
     }
@@ -110,6 +128,12 @@ async function updatePreferences(req: AuthenticatedRequest) {
     if (libraryScope !== undefined) {
       updateData.bookDateLibraryScope = libraryScope || 'full';
     }
+    if (favoriteBookIds !== undefined) {
+      // Store as JSON string
+      updateData.bookDateFavoriteBookIds = favoriteBookIds && favoriteBookIds.length > 0
+        ? JSON.stringify(favoriteBookIds)
+        : null;
+    }
     if (customPrompt !== undefined) {
       // Normalize empty strings to null for consistency
       const normalizedPrompt = (typeof customPrompt === 'string' && customPrompt.trim()) ? customPrompt.trim() : null;
@@ -125,6 +149,7 @@ async function updatePreferences(req: AuthenticatedRequest) {
       data: updateData,
       select: {
         bookDateLibraryScope: true,
+        bookDateFavoriteBookIds: true,
         bookDateCustomPrompt: true,
         bookDateOnboardingComplete: true,
       },
@@ -133,6 +158,7 @@ async function updatePreferences(req: AuthenticatedRequest) {
     return NextResponse.json({
       success: true,
       libraryScope: updatedUser.bookDateLibraryScope || 'full',
+      favoriteBookIds: updatedUser.bookDateFavoriteBookIds ? JSON.parse(updatedUser.bookDateFavoriteBookIds) : [],
       customPrompt: updatedUser.bookDateCustomPrompt || '', // Always return empty string for UI
       onboardingComplete: updatedUser.bookDateOnboardingComplete || false,
     });

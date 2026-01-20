@@ -39,3 +39,134 @@ body {
 .animate-slide-in-right {
   animation: slide-in-right 0.3s ease-out;
 }
+
+/* BookDate Card Stack Animations */
+
+/* Exit animations - card swipes away */
+@keyframes card-exit-left {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-150%, 50px) rotate(-25deg);
+    opacity: 0;
+  }
+}
+
+@keyframes card-exit-right {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(150%, 50px) rotate(25deg);
+    opacity: 0;
+  }
+}
+
+@keyframes card-exit-up {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, -120%) scale(0.8);
+    opacity: 0;
+  }
+}
+
+/* Advance animations - cards move forward in stack */
+@keyframes card-advance-to-top {
+  0% {
+    transform: scale(0.95) translateY(-12px);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes card-advance-to-middle {
+  0% {
+    transform: scale(0.90) translateY(-24px);
+    opacity: 0.90;
+  }
+  100% {
+    transform: scale(0.95) translateY(-12px);
+    opacity: 0.95;
+  }
+}
+
+/* Enter animation - new card enters from bottom of stack */
+@keyframes card-enter {
+  0% {
+    transform: scale(0.85) translateY(-36px);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(0.90) translateY(-24px);
+    opacity: 0.90;
+  }
+}
+
+/* Animation classes */
+.animate-exit-left {
+  animation: card-exit-left 400ms ease-in-out forwards;
+}
+
+.animate-exit-right {
+  animation: card-exit-right 400ms ease-in-out forwards;
+}
+
+.animate-exit-up {
+  animation: card-exit-up 400ms ease-in-out forwards;
+}
+
+.animate-advance-to-top {
+  animation: card-advance-to-top 350ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-advance-to-middle {
+  animation: card-advance-to-middle 350ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-enter {
+  animation: card-enter 350ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Stack positioning classes */
+.card-stack-position-0 {
+  z-index: 50;
+  transform: scale(1) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.card-stack-position-1 {
+  z-index: 40;
+  transform: scale(0.95) translateY(-12px);
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.card-stack-position-2 {
+  z-index: 30;
+  transform: scale(0.90) translateY(-24px);
+  opacity: 0.90;
+  pointer-events: none;
+}
+
+/* Performance optimizations */
+.card-stack-container {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+.card-stack-item {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-origin: center center;
+}

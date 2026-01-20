@@ -232,12 +232,12 @@ async function enrichWithUserRatings(
 /**
  * Get user's Plex library books based on scope
  * @param userId - User ID
- * @param scope - 'full' | 'listened' | 'rated'
+ * @param scope - 'full' | 'listened' | 'rated' | 'favorites'
  * @returns Array of library books (max 40)
  */
 export async function getUserLibraryBooks(
   userId: string,
-  scope: 'full' | 'listened' | 'rated'
+  scope: 'full' | 'listened' | 'rated' | 'favorites'
 ): Promise<LibraryBook[]> {
   try {
     const configService = getConfigService();
@@ -247,6 +247,74 @@ export async function getUserLibraryBooks(
     if (backendMode === 'audiobookshelf' && scope === 'rated') {
       logger.warn('Audiobookshelf does not support ratings, falling back to full library');
       scope = 'full';
+    }
+
+    // Handle favorites scope
+    if (scope === 'favorites') {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { bookDateFavoriteBookIds: true },
+      });
+
+      const favoriteIds = user?.bookDateFavoriteBookIds
+        ? JSON.parse(user.bookDateFavoriteBookIds)
+        : [];
+
+      if (favoriteIds.length === 0) {
+        logger.warn('Favorites scope selected but no favorites stored, falling back to full library');
+        scope = 'full';
+      } else {
+        // Get library ID for filtering
+        let libraryId: string;
+        if (backendMode === 'audiobookshelf') {
+          const absLibraryId = await configService.get('audiobookshelf.library_id');
+          if (!absLibraryId) {
+            logger.warn('No Audiobookshelf library ID configured');
+            return [];
+          }
+          libraryId = absLibraryId;
+        } else {
+          const plexConfig = await configService.getPlexConfig();
+          if (!plexConfig.libraryId) {
+            logger.warn('No Plex library ID configured');
+            return [];
+          }
+          libraryId = plexConfig.libraryId;
+        }
+
+        // Query favorite books
+        const cachedBooks = await prisma.plexLibrary.findMany({
+          where: {
+            id: { in: favoriteIds },
+            plexLibraryId: libraryId, // Ensure books are from current library
+          },
+          select: {
+            title: true,
+            author: true,
+            narrator: true,
+            plexGuid: true,
+            plexRatingKey: true,
+            userRating: true,
+          },
+          orderBy: { addedAt: 'desc' },
+        });
+
+        logger.info(`Fetched ${cachedBooks.length} favorite books for user ${userId}`);
+
+        // For Plex: Enrich with user's personal ratings
+        // For Audiobookshelf: Skip enrichment (no rating support)
+        if (backendMode === 'plex') {
+          return await enrichWithUserRatings(userId, cachedBooks);
+        } else {
+          // Audiobookshelf: Map to LibraryBook without ratings
+          return cachedBooks.map(book => ({
+            title: book.title,
+            author: book.author,
+            narrator: book.narrator || undefined,
+            rating: undefined,
+          }));
+        }
+      }
     }
 
     // Get library ID based on backend mode
@@ -422,7 +490,7 @@ export async function buildAIPrompt(
 ): Promise<string> {
   const libraryBooks = await getUserLibraryBooks(
     userId,
-    config.libraryScope as 'full' | 'listened' | 'rated'
+    config.libraryScope as 'full' | 'listened' | 'rated' | 'favorites'
   );
 
   const swipeHistory = await getUserRecentSwipes(userId, 10);
@@ -433,6 +501,27 @@ export async function buildAIPrompt(
     customPrompt: config.customPrompt ? 'Yes' : 'No',
     libraryScope: config.libraryScope,
   });
+
+  let instructions =
+    'Recommend 15-20 audiobooks the user would enjoy based on their library and swipe history. ' +
+    'CRITICAL RULES:\n' +
+    '1. DO NOT recommend any books already in the user\'s library (check titles carefully)\n' +
+    '2. DO NOT recommend any books from the swipe history (whether requested, rejected, dismissed, or marked_as_liked)\n' +
+    '3. You must provide 15-20 diverse recommendations, not just 3-5\n' +
+    '4. Focus on variety across genres, authors, and styles\n' +
+    '5. Consider user ratings if available (0-10 scale, higher = liked more)\n' +
+    '6. Learn from rejected books to avoid similar recommendations\n' +
+    '7. Learn from requested books to find similar ones\n' +
+    '8. Pay special attention to "marked_as_liked" books - these are books the user has already read/listened to elsewhere and enjoyed. Find similar books to these.\n' +
+    '9. Each recommendation should be a NEW book not mentioned anywhere in the user context';
+
+  // Add special instruction for favorites scope
+  if (config.libraryScope === 'favorites') {
+    instructions += '\n\n' +
+      'IMPORTANT: The user has specifically handpicked these ' + libraryBooks.length + ' books as their personal favorites. ' +
+      'These represent their preferred genres, authors, themes, and styles. Use these as PRIMARY INSPIRATION for your recommendations. ' +
+      'Find books that capture the essence of what makes these favorites special to the user.';
+  }
 
   const prompt = {
     task: 'recommend_audiobooks',
@@ -447,18 +536,7 @@ export async function buildAIPrompt(
       })),
       custom_preferences: config.customPrompt || null,
     },
-    instructions:
-      'Recommend 15-20 audiobooks the user would enjoy based on their library and swipe history. ' +
-      'CRITICAL RULES:\n' +
-      '1. DO NOT recommend any books already in the user\'s library (check titles carefully)\n' +
-      '2. DO NOT recommend any books from the swipe history (whether requested, rejected, dismissed, or marked_as_liked)\n' +
-      '3. You must provide 15-20 diverse recommendations, not just 3-5\n' +
-      '4. Focus on variety across genres, authors, and styles\n' +
-      '5. Consider user ratings if available (0-10 scale, higher = liked more)\n' +
-      '6. Learn from rejected books to avoid similar recommendations\n' +
-      '7. Learn from requested books to find similar ones\n' +
-      '8. Pay special attention to "marked_as_liked" books - these are books the user has already read/listened to elsewhere and enjoyed. Find similar books to these.\n' +
-      '9. Each recommendation should be a NEW book not mentioned anywhere in the user context',
+    instructions,
   };
 
   const promptString = JSON.stringify(prompt);

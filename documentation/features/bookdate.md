@@ -14,6 +14,10 @@ Personalized audiobook discovery using OpenAI/Claude APIs. Admin configures AI p
   - Rated only: Only books the user has rated
     - Local admin: Uses cached ratings from system token
     - Plex users: Fetches 100 books, filters to user's rated books, returns top 40
+  - Pick my favorites: User selects up to 25 specific books as their personalized library
+    - Book picker modal with search, grid view, visual selection feedback
+    - AI receives special instruction that these are user's handpicked favorites
+    - Falls back to full library if no favorites selected
 - **Custom Prompt (per-user):** Optional preferences (max 1000 chars) to guide recommendations
 - **Context Window:** Max 50 books (40 library + 10 swipe history) per user
 - **Cache:** All unswiped recommendations persisted per user, shown on return
@@ -39,7 +43,8 @@ Personalized audiobook discovery using OpenAI/Claude APIs. Admin configures AI p
 
 ### User (per-user preferences)
 ```prisma
-- bookDateLibraryScope ('full' | 'rated', default: 'full')
+- bookDateLibraryScope ('full' | 'rated' | 'favorites', default: 'full')
+- bookDateFavoriteBookIds (JSON string array of PlexLibrary IDs, max 25, nullable)
 - bookDateCustomPrompt (optional, max 1000 chars)
 - bookDateOnboardingComplete (boolean, default: false)
 ```
@@ -74,9 +79,13 @@ Personalized audiobook discovery using OpenAI/Claude APIs. Admin configures AI p
 - DELETE `/api/bookdate/swipes` - Clear ALL users' swipe history (Admin only)
 
 **User Preferences:**
-- GET `/api/bookdate/preferences` - Get user's BookDate preferences (libraryScope, customPrompt, onboardingComplete) (All authenticated)
+- GET `/api/bookdate/preferences` - Get user's BookDate preferences (libraryScope, favoriteBookIds, customPrompt, onboardingComplete) (All authenticated)
 - PUT `/api/bookdate/preferences` - Update user's preferences (All authenticated)
-  - Accepts `libraryScope` ('full' | 'rated'), `customPrompt` (max 1000 chars), and `onboardingComplete` (boolean)
+  - Accepts `libraryScope` ('full' | 'rated' | 'favorites'), `favoriteBookIds` (array, max 25), `customPrompt` (max 1000 chars), and `onboardingComplete` (boolean)
+  - Validates favorites scope requires at least 1 book selected
+- GET `/api/bookdate/library` - Get user's full library for book picker modal (All authenticated)
+  - Returns books with id, title, author, coverUrl
+  - **Cover priority:** Library cached cover → Audible cache → null (see library-thumbnail-cache.md)
 
 **Recommendations:**
 - GET `/api/bookdate/recommendations` - Return user's cached unswiped recommendations (All authenticated)
@@ -98,6 +107,16 @@ Personalized audiobook discovery using OpenAI/Claude APIs. Admin configures AI p
   - Mobile-optimized: Reduced padding, smaller text, line-clamped AI reason
 - `SettingsWidget` - Per-user preferences modal (library scope, custom prompt) in `/bookdate` page
   - Supports onboarding mode with "Welcome" header and "Let's Go!" button
+  - Includes "Pick my favorites" radio option that opens BookPickerModal
+  - Shows selection count when favorites scope selected
+- `BookPickerModal` - Book selection modal for favorites scope (max 25 books)
+  - Grid view with cover images (5 cols desktop, 2 cols mobile)
+  - Search/filter by title or author
+  - Visual selection feedback (blue ring, checkmark overlay)
+  - Real-time selection counter (X/25)
+  - Disabled state when max reached
+  - Staggered fade-in animations
+  - Preserves selection on cancel
   - Cannot be closed during onboarding (no X button)
 - `LoadingScreen` - Animated loading state
 - Navigation tab - Shows to any user with verified configuration

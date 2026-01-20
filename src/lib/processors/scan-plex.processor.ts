@@ -10,6 +10,7 @@ import { ScanPlexPayload } from '../services/job-queue.service';
 import { prisma } from '../db';
 import { getLibraryService } from '../services/library';
 import { getConfigService } from '../services/config.service';
+import { getThumbnailCacheService } from '../services/thumbnail-cache.service';
 import { RMABLogger } from '../utils/logger';
 
 /**
@@ -28,6 +29,7 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
     const libraryService = await getLibraryService();
     const configService = getConfigService();
     const backendMode = await configService.getBackendMode();
+    const thumbnailCacheService = getThumbnailCacheService();
 
     logger.info(`Backend mode: ${backendMode}`);
 
@@ -49,6 +51,9 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
         targetLibraryId = plexConfig.libraryId;
       }
     }
+
+    // Get cover caching parameters (needed for thumbnail caching)
+    const coverCachingParams = await (libraryService as any).getCoverCachingParams();
 
     logger.info(`Fetching content from library ${targetLibraryId}`);
 
@@ -97,6 +102,25 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
             },
           });
 
+          // Cache library cover (synchronous with smart skip-if-exists logic)
+          if (item.coverUrl && item.externalId) {
+            const cachedPath = await thumbnailCacheService.cacheLibraryThumbnail(
+              item.externalId,
+              item.coverUrl,
+              coverCachingParams.backendBaseUrl,
+              coverCachingParams.authToken,
+              coverCachingParams.backendMode
+            );
+
+            // Update database with cached path if successful
+            if (cachedPath) {
+              await prisma.plexLibrary.update({
+                where: { id: existing.id },
+                data: { cachedLibraryCoverPath: cachedPath },
+              });
+            }
+          }
+
           updatedCount++;
         } else {
           // Create new plex_library entry
@@ -118,6 +142,25 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
               lastScannedAt: new Date(),
             },
           });
+
+          // Cache library cover (synchronous with smart skip-if-exists logic)
+          if (item.coverUrl && item.externalId) {
+            const cachedPath = await thumbnailCacheService.cacheLibraryThumbnail(
+              item.externalId,
+              item.coverUrl,
+              coverCachingParams.backendBaseUrl,
+              coverCachingParams.authToken,
+              coverCachingParams.backendMode
+            );
+
+            // Update database with cached path if successful
+            if (cachedPath) {
+              await prisma.plexLibrary.update({
+                where: { id: newLibraryItem.id },
+                data: { cachedLibraryCoverPath: cachedPath },
+              });
+            }
+          }
 
           newCount++;
           logger.info(`Added new: "${item.title}" by ${item.author}`);

@@ -211,4 +211,29 @@ describe('PlexLibraryService', () => {
 
     await expect(service.triggerLibraryScan('lib-1')).rejects.toThrow('Plex server configuration is incomplete');
   });
+
+  it('returns cover caching params for Plex backend', async () => {
+    configServiceMock.getPlexConfig.mockResolvedValue({
+      serverUrl: 'http://plex:32400',
+      authToken: 'plex-token-123',
+      libraryId: 'lib-1',
+    });
+
+    const service = new PlexLibraryService();
+    const params = await service.getCoverCachingParams();
+
+    expect(params).toEqual({
+      backendBaseUrl: 'http://plex:32400',
+      authToken: 'plex-token-123',
+      backendMode: 'plex',
+    });
+  });
+
+  it('throws when getting cover caching params without config', async () => {
+    configServiceMock.getPlexConfig.mockResolvedValue({ serverUrl: null, authToken: null });
+
+    const service = new PlexLibraryService();
+
+    await expect(service.getCoverCachingParams()).rejects.toThrow('Plex server configuration is incomplete');
+  });
 });

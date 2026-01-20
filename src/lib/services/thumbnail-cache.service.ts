@@ -12,6 +12,7 @@ import { RMABLogger } from '../utils/logger';
 const logger = RMABLogger.create('ThumbnailCache');
 
 const CACHE_DIR = '/app/cache/thumbnails';
+const LIBRARY_CACHE_DIR = '/app/cache/library';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB max per image
 const TIMEOUT_MS = 10000; // 10 second timeout for downloads
 
@@ -29,6 +30,18 @@ export class ThumbnailCacheService {
   }
 
   /**
+   * Ensure library cache directory exists
+   */
+  private async ensureLibraryCacheDir(): Promise<void> {
+    try {
+      await fs.mkdir(LIBRARY_CACHE_DIR, { recursive: true });
+    } catch (error) {
+      logger.error('Failed to create library cache directory', { error: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  }
+
+  /**
    * Generate a unique filename for a cached thumbnail
    * @param asin - Audible ASIN
    * @param url - Original URL (used for extension)
@@ -41,6 +54,28 @@ export class ThumbnailCacheService {
 
     // Use ASIN as filename for easy lookup and cleanup
     return `${asin}${ext}`;
+  }
+
+  /**
+   * Generate a unique filename for a library cover using SHA-256 hash
+   * @param plexGuid - Plex/ABS unique identifier (may contain special chars)
+   * @param url - Original URL (used for extension)
+   * @returns Filename for cached library cover
+   */
+  private generateLibraryFilename(plexGuid: string, url: string): string {
+    // Hash the plexGuid to handle special characters (://, ?, etc.)
+    const hash = crypto.createHash('sha256').update(plexGuid).digest('hex').substring(0, 16);
+
+    // Extract file extension from URL (default to .jpg if not found)
+    let ext = '.jpg';
+    try {
+      const urlPath = new URL(url).pathname;
+      ext = path.extname(urlPath) || '.jpg';
+    } catch {
+      // If URL parsing fails, use default extension
+    }
+
+    return `${hash}${ext}`;
   }
 
   /**
@@ -99,6 +134,84 @@ export class ThumbnailCacheService {
   }
 
   /**
+   * Download and cache a library thumbnail from Plex/Audiobookshelf
+   * @param plexGuid - Plex/ABS unique identifier
+   * @param coverUrl - URL of the cover (full URL or relative path)
+   * @param backendBaseUrl - Base URL of backend (Plex or ABS server)
+   * @param authToken - Authentication token
+   * @param backendMode - 'plex' or 'audiobookshelf'
+   * @returns Local file path of cached thumbnail, or null if failed
+   */
+  async cacheLibraryThumbnail(
+    plexGuid: string,
+    coverUrl: string,
+    backendBaseUrl: string,
+    authToken: string,
+    backendMode: 'plex' | 'audiobookshelf'
+  ): Promise<string | null> {
+    if (!coverUrl || !plexGuid || !backendBaseUrl || !authToken) {
+      return null;
+    }
+
+    try {
+      await this.ensureLibraryCacheDir();
+
+      const filename = this.generateLibraryFilename(plexGuid, coverUrl);
+      const filePath = path.join(LIBRARY_CACHE_DIR, filename);
+
+      // Check if file already exists (skip download for subsequent scans)
+      try {
+        await fs.access(filePath);
+        // File exists, return path immediately
+        return filePath;
+      } catch {
+        // File doesn't exist, proceed with download
+      }
+
+      // Construct full URL based on backend mode
+      let fullUrl: string;
+      if (backendMode === 'plex') {
+        // Plex uses token in query string
+        const separator = coverUrl.includes('?') ? '&' : '?';
+        fullUrl = `${backendBaseUrl}${coverUrl}${separator}X-Plex-Token=${authToken}`;
+      } else {
+        // Audiobookshelf uses Authorization header
+        fullUrl = coverUrl.startsWith('http') ? coverUrl : `${backendBaseUrl}${coverUrl}`;
+      }
+
+      // Download image
+      const response = await axios.get(fullUrl, {
+        responseType: 'arraybuffer',
+        timeout: TIMEOUT_MS,
+        maxContentLength: MAX_FILE_SIZE,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          ...(backendMode === 'audiobookshelf' && { Authorization: `Bearer ${authToken}` }),
+        },
+      });
+
+      // Verify content type is an image
+      const contentType = response.headers['content-type'];
+      if (!contentType || !contentType.startsWith('image/')) {
+        logger.warn(`Invalid content type for library cover ${plexGuid}: ${contentType}`);
+        return null;
+      }
+
+      // Write to file
+      await fs.writeFile(filePath, Buffer.from(response.data));
+
+      logger.info(`Cached library thumbnail for ${plexGuid}: ${filePath}`);
+      return filePath;
+    } catch (error) {
+      // Log error but don't throw - graceful degradation
+      logger.warn(`Failed to cache library thumbnail for ${plexGuid}`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * Delete a cached thumbnail
    * @param asin - Audible ASIN
    */
@@ -146,6 +259,49 @@ export class ThumbnailCacheService {
       return deletedCount;
     } catch (error) {
       logger.error('Failed to cleanup thumbnails', { error: error instanceof Error ? error.message : String(error) });
+      return 0;
+    }
+  }
+
+  /**
+   * Clean up library thumbnails that are no longer referenced in the database
+   * @param plexGuidToHashMap - Map of plexGuid to hash (for reverse lookup)
+   * @returns Number of deleted files
+   */
+  async cleanupLibraryThumbnails(plexGuidToHashMap: Map<string, string>): Promise<number> {
+    try {
+      await this.ensureLibraryCacheDir();
+
+      const files = await fs.readdir(LIBRARY_CACHE_DIR);
+      let deletedCount = 0;
+
+      // Build reverse map: hash -> plexGuid
+      const activeHashes = new Set<string>();
+      for (const [plexGuid] of plexGuidToHashMap) {
+        // Generate hash for each plexGuid (consistent with generateLibraryFilename)
+        const hash = crypto.createHash('sha256').update(plexGuid).digest('hex').substring(0, 16);
+        activeHashes.add(hash);
+      }
+
+      for (const file of files) {
+        // Extract hash from filename (remove extension)
+        const hash = path.parse(file).name;
+
+        // If hash is not in active set, delete the file
+        if (!activeHashes.has(hash)) {
+          const filePath = path.join(LIBRARY_CACHE_DIR, file);
+          await fs.unlink(filePath);
+          deletedCount++;
+          logger.info(`Deleted unused library thumbnail: ${file}`);
+        }
+      }
+
+      logger.info(`Library cleanup complete: ${deletedCount} thumbnails deleted`);
+      return deletedCount;
+    } catch (error) {
+      logger.error('Failed to cleanup library thumbnails', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return 0;
     }
   }

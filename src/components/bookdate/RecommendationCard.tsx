@@ -12,11 +12,17 @@ import { useSwipeable } from 'react-swipeable';
 interface RecommendationCardProps {
   recommendation: any;
   onSwipe: (action: 'left' | 'right' | 'up', markedAsKnown?: boolean) => void;
+  stackPosition?: number; // 0 = top, 1 = middle, 2 = bottom
+  isAnimating?: boolean; // True during exit/advance animations
+  isDraggable?: boolean; // False for cards behind the top card
 }
 
 export function RecommendationCard({
   recommendation,
   onSwipe,
+  stackPosition = 0,
+  isAnimating = false,
+  isDraggable = true,
 }: RecommendationCardProps) {
   const [showToast, setShowToast] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -36,9 +42,18 @@ export function RecommendationCard({
 
   const swipeHandlers = useSwipeable({
     onSwiping: (eventData) => {
-      setDragOffset({ x: eventData.deltaX, y: eventData.deltaY });
+      // Only update drag offset if card is draggable and not animating
+      if (isDraggable && !isAnimating) {
+        setDragOffset({ x: eventData.deltaX, y: eventData.deltaY });
+      }
     },
     onSwiped: (eventData) => {
+      // Only process swipe if card is draggable and not animating
+      if (!isDraggable || isAnimating) {
+        setDragOffset({ x: 0, y: 0 });
+        return;
+      }
+
       // Check final position when user releases - must be at 100px threshold
       const finalX = eventData.deltaX;
       const finalY = eventData.deltaY;
@@ -187,27 +202,32 @@ export function RecommendationCard({
           )}
         </div>
 
-        {/* Desktop buttons */}
-        <div className="hidden md:flex justify-center gap-4 p-6 border-t border-gray-200 dark:border-gray-700">
-          <button
-            onClick={() => onSwipe('left')}
-            className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-full font-medium transition-colors shadow-lg"
-          >
-            ❌ Not Interested
-          </button>
-          <button
-            onClick={() => onSwipe('up')}
-            className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-medium transition-colors shadow-lg"
-          >
-            ⬆️ Dismiss
-          </button>
-          <button
-            onClick={handleSwipeRight}
-            className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-full font-medium transition-colors shadow-lg"
-          >
-            ✅ Request
-          </button>
-        </div>
+        {/* Desktop buttons - only show for top card */}
+        {stackPosition === 0 && (
+          <div className="hidden md:flex justify-center gap-4 p-6 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => !isAnimating && onSwipe('left')}
+              disabled={isAnimating}
+              className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-full font-medium transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ❌ Not Interested
+            </button>
+            <button
+              onClick={() => !isAnimating && onSwipe('up')}
+              disabled={isAnimating}
+              className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-medium transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ⬆️ Dismiss
+            </button>
+            <button
+              onClick={() => !isAnimating && handleSwipeRight()}
+              disabled={isAnimating}
+              className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-full font-medium transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ✅ Request
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Confirmation Toast */}

@@ -49,7 +49,9 @@ export default function AdminSettings() {
 
   // Indexer-specific state (used by IndexersTab)
   const [configuredIndexers, setConfiguredIndexers] = useState<SavedIndexerConfig[]>([]);
+  const [originalConfiguredIndexers, setOriginalConfiguredIndexers] = useState<SavedIndexerConfig[]>([]);
   const [flagConfigs, setFlagConfigs] = useState<IndexerFlagConfig[]>([]);
+  const [originalFlagConfigs, setOriginalFlagConfigs] = useState<IndexerFlagConfig[]>([]);
 
   // Initial data fetch
   useEffect(() => {
@@ -89,7 +91,9 @@ export default function AdminSettings() {
       const response = await fetchWithAuth('/api/admin/settings/prowlarr/indexers');
       if (response.ok) {
         const data = await response.json();
-        setFlagConfigs(data.flagConfigs || []);
+        const flags = data.flagConfigs || [];
+        setFlagConfigs(flags);
+        setOriginalFlagConfigs(JSON.parse(JSON.stringify(flags)));
 
         // Extract configured indexers (enabled ones)
         const configured = (data.indexers || [])
@@ -103,6 +107,7 @@ export default function AdminSettings() {
             categories: idx.categories || [3030],
           }));
         setConfiguredIndexers(configured);
+        setOriginalConfiguredIndexers(JSON.parse(JSON.stringify(configured)));
       } else {
         console.error('Failed to fetch indexers:', response.status);
         if (force) {
@@ -139,6 +144,13 @@ export default function AdminSettings() {
       await saveTabSettings(activeTab, settings, configuredIndexers, flagConfigs);
       setMessage({ type: 'success', text: 'Settings saved successfully!' });
       setOriginalSettings(JSON.parse(JSON.stringify(settings)));
+
+      // Also update original indexers and flag configs when saving prowlarr tab
+      if (activeTab === 'prowlarr') {
+        setOriginalConfiguredIndexers(JSON.parse(JSON.stringify(configuredIndexers)));
+        setOriginalFlagConfigs(JSON.parse(JSON.stringify(flagConfigs)));
+      }
+
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       setMessage({
@@ -161,8 +173,21 @@ export default function AdminSettings() {
 
   // Dynamic tabs, validation, and change detection
   const tabs = getTabs(settings.backendMode);
-  const currentTabValidation = getTabValidation(activeTab, settings, validated);
-  const hasUnsavedChanges = JSON.stringify(settings) !== JSON.stringify(originalSettings);
+  const currentTabValidation = getTabValidation(activeTab, settings, originalSettings, validated);
+
+  // Check for unsaved changes in settings and indexer-specific state
+  const hasUnsavedChanges = (() => {
+    const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings);
+
+    // For prowlarr tab, also check indexers and flag configs
+    if (activeTab === 'prowlarr') {
+      const indexersChanged = JSON.stringify(configuredIndexers) !== JSON.stringify(originalConfiguredIndexers);
+      const flagConfigsChanged = JSON.stringify(flagConfigs) !== JSON.stringify(originalFlagConfigs);
+      return settingsChanged || indexersChanged || flagConfigsChanged;
+    }
+
+    return settingsChanged;
+  })();
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -315,7 +340,9 @@ export default function AdminSettings() {
               </Button>
               {!currentTabValidation && hasUnsavedChanges && (
                 <p className="text-sm text-gray-500 dark:text-gray-400 self-center">
-                  Please test the connection before saving
+                  {activeTab === 'prowlarr'
+                    ? 'Please test the Prowlarr connection before saving'
+                    : 'Please test the connection before saving'}
                 </p>
               )}
             </div>

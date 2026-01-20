@@ -20,8 +20,10 @@ import {
   triggerABSScan,
 } from '../audiobookshelf/api';
 import { ABSLibraryItem } from '../audiobookshelf/types';
+import { getConfigService } from '@/lib/services/config.service';
 
 export class AudiobookshelfLibraryService implements ILibraryService {
+  private configService = getConfigService();
 
   async testConnection(): Promise<LibraryConnectionResult> {
     try {
@@ -85,6 +87,34 @@ export class AudiobookshelfLibraryService implements ILibraryService {
 
   async triggerLibraryScan(libraryId: string): Promise<void> {
     await triggerABSScan(libraryId);
+  }
+
+  /**
+   * Get parameters needed for caching library covers
+   * @returns Parameters for ThumbnailCacheService.cacheLibraryThumbnail()
+   */
+  async getCoverCachingParams(): Promise<{
+    backendBaseUrl: string;
+    authToken: string;
+    backendMode: 'plex' | 'audiobookshelf';
+  }> {
+    const config = await this.configService.getMany([
+      'audiobookshelf.server_url',
+      'audiobookshelf.api_token',
+    ]);
+
+    const serverUrl = config['audiobookshelf.server_url'];
+    const authToken = config['audiobookshelf.api_token'];
+
+    if (!serverUrl || !authToken) {
+      throw new Error('Audiobookshelf server configuration is incomplete');
+    }
+
+    return {
+      backendBaseUrl: serverUrl,
+      authToken: authToken,
+      backendMode: 'audiobookshelf',
+    };
   }
 
   private mapABSItemToLibraryItem(item: ABSLibraryItem): LibraryItem {

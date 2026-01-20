@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
-import { RecommendationCard } from '@/components/bookdate/RecommendationCard';
+import { CardStack } from '@/components/bookdate/CardStack';
 import { LoadingScreen } from '@/components/bookdate/LoadingScreen';
 import { SettingsWidget } from '@/components/bookdate/SettingsWidget';
 
@@ -150,17 +150,22 @@ export default function BookDatePage() {
         }, 3000);
       }
 
-      // Move to next recommendation
-      setCurrentIndex(currentIndex + 1);
-
-      // Check if we need to load more recommendations
-      if (currentIndex + 1 >= recommendations.length) {
-        // At the end - could auto-load more or show empty state
-      }
+      // Note: currentIndex is now incremented in handleSwipeComplete
+      // after animations finish
 
     } catch (error) {
       console.error('Swipe error:', error);
       // Don't block user, just log error
+    }
+  };
+
+  const handleSwipeComplete = () => {
+    // Increment currentIndex after animations complete
+    setCurrentIndex((prev) => prev + 1);
+
+    // Check if we need to load more recommendations
+    if (currentIndex + 1 >= recommendations.length) {
+      // At the end - could auto-load more or show empty state
     }
   };
 
@@ -323,8 +328,6 @@ export default function BookDatePage() {
     );
   }
 
-  const currentRec = recommendations[currentIndex];
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Header />
@@ -347,10 +350,12 @@ export default function BookDatePage() {
           {currentIndex + 1} / {recommendations.length}
         </div>
 
-        {/* Recommendation card */}
-        <RecommendationCard
-          recommendation={currentRec}
+        {/* Card Stack */}
+        <CardStack
+          recommendations={recommendations}
+          currentIndex={currentIndex}
           onSwipe={handleSwipe}
+          onSwipeComplete={handleSwipeComplete}
         />
 
         {/* Undo button */}

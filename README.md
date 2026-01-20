@@ -1,339 +1,159 @@
-# 📚 ReadMeABook
+# ReadMeABook
 
-**An automated audiobook request and acquisition system that integrates with your Plex library.**
+**[HERO SCREENSHOT PLACEHOLDER: Full-width hero image showing the main dashboard with recent requests, BookDate swipe interface preview, and library stats - something that looks modern and shows off the UI]**
 
-ReadMeABook bridges the gap between your Plex audiobook library and automation tools like qBittorrent and Prowlarr. Request audiobooks through a web interface, and let ReadMeABook handle finding, downloading, and organizing them into your Plex library.
+An audiobook automation system that connects your Plex library to torrent and Usenet indexers. Request audiobooks through a web interface and they're automatically downloaded, organized, and imported into your Plex library.
 
----
+## What It Does
 
-## ✨ Features
+If you're running Plex with an audiobook library, you know the drill: search for torrents or NZBs manually, download them, move files to the right folder, wait for Plex to scan. ReadMeABook automates all of that.
 
-- **🔐 Plex Authentication** - Seamless login with your existing Plex account
-- **📖 Library Sync** - Automatically scans and tracks your Plex audiobook library
-- **🤖 AI-Powered Recommendations** - BookDate: Get personalized audiobook suggestions based on your library and preferences
-- **🔍 Smart Search** - Finds audiobooks via Audible metadata and Prowlarr indexers
-- **⚡ Automated Downloads** - Integrates with qBittorrent for automatic acquisition
-- **📊 Request Management** - Track request status from search to library import
-- **👥 Multi-User Support** - Role-based access control (user/admin)
-- **🎯 Intelligent Matching** - Matches downloaded files to requested books
-- **🔄 Background Jobs** - Automated library scans, status checks, and cleanup
+It works like the *arr apps (Sonarr, Radarr) but for audiobooks. Connect it to Prowlarr for searching, qBittorrent or SABnzbd for downloading, and Plex for your library. Request a book and everything else happens automatically.
 
----
+There's also BookDate - an AI-powered recommendation system that suggests audiobooks based on what you already own. Think Tinder but for books. Swipe right to request, left to skip.
 
-## 🚀 Quick Start
+## Features
 
-### Prerequisites
-- **Docker** (recommended) or Docker Compose
-- **Plex Media Server** with an audiobook library
-- **qBittorrent** - Download client for torrent management
-- **Prowlarr** - Indexer aggregator for searching torrents
+- **Plex Integration** - OAuth login, automatic library scanning, fuzzy matching
+- **Torrent Support** - qBittorrent and Transmission clients
+- **Usenet Support** - SABnzbd for NZB downloads
+- **Prowlarr Integration** - Search both torrents and Usenet indexers
+- **Request Management** - Track downloads from search to completion
+- **BookDate Recommendations** - AI-powered suggestions with swipe interface (OpenAI/Claude)
+- **Chapter Merging** - Automatically combine multi-file downloads into single M4B with chapter markers
+- **E-book Sidecar** - Optional e-book downloads from Anna's Archive
+- **Multi-User Support** - Role-based access (admin/user), request approval system
+- **Setup Wizard** - 9-step guided configuration with connection testing
 
-### Option 1: Docker Compose (Recommended)
+## Screenshots
 
-1. **Download the compose file:**
-   ```bash
-   curl -O https://raw.githubusercontent.com/kikootwo/ReadMeABook/main/docker-compose.yml
-   ```
+**[SCREENSHOT PLACEHOLDER: Dashboard page showing active requests with status badges (Searching/Downloading/Completed) and recent activity]**
 
-2. **Start the container:**
-   ```bash
-   docker compose up -d
-   ```
+**[SCREENSHOT PLACEHOLDER: BookDate interface with the card stack showing a book cover, AI reasoning, and the swipe gesture indicators]**
 
-3. **Access the application:**
-   Open http://localhost:3030 in your browser
+**[SCREENSHOT PLACEHOLDER: Settings page showing the Prowlarr/qBittorrent/SABnzbd configuration form with connection test buttons]**
 
-> **Note:** The application automatically creates all required directories on first run.
+## Quick Start
 
-### Option 2: Docker Run
+Prerequisites: Docker, Plex Media Server, and either qBittorrent or SABnzbd. Prowlarr is highly recommended for searching indexers.
 
-```bash
-docker run -d \
-  --name readmeabook \
-  -p 3030:3030 \
-  -v ./config:/app/config \
-  -v ./cache:/app/cache \
-  -v ./downloads:/downloads \
-  -v ./media:/media \
-  -v readmeabook-pgdata:/var/lib/postgresql/data \
-  -v readmeabook-redis:/var/lib/redis \
-  ghcr.io/kikootwo/readmeabook:latest
-```
+### Docker Compose
 
-> **Note:** Directories are automatically created on first run.
-
----
-
-## 📁 Volume Mounts
-
-| Path | Description | Required |
-|------|-------------|----------|
-| `/app/config` | Application configuration and logs | Yes |
-| `/app/cache` | Temporary file cache | Yes |
-| `/downloads` | qBittorrent download directory | Yes |
-| `/media` | Plex audiobook library path | Yes |
-| `/var/lib/postgresql/data` | PostgreSQL database | Yes |
-| `/var/lib/redis` | Redis cache data | Yes |
-
-> **💡 Tip:** The unified Docker image includes PostgreSQL and Redis built-in. For separate containers, see [docker-compose.debug.yml](docker-compose.debug.yml).
-
----
-
-## ⚙️ Initial Setup
-
-After starting ReadMeABook for the first time:
-
-1. **Navigate to** http://localhost:3030
-2. **Log in with Plex** - First user automatically becomes admin
-3. **Configure Settings** (Settings → Configuration):
-   - **Plex Server URL** - Your Plex server address
-   - **Audiobook Library** - Select your audiobook library
-   - **Prowlarr API** - API URL and key for torrent searching
-   - **qBittorrent** - Web UI URL and credentials for downloads
-4. **Scan Library** - Click "Scan Library" to import existing audiobooks
-5. **Explore BookDate** - Get AI-powered audiobook recommendations
-6. **Start Requesting** - Search for audiobooks and submit requests
-
----
-
-## 🔧 Configuration
-
-### Environment Variables (Optional)
-
-Most variables have secure defaults generated automatically. Configure these only if needed:
-
-#### Security (Auto-generated on first run)
-- `JWT_SECRET` - JWT token signing secret
-- `JWT_REFRESH_SECRET` - Refresh token signing secret
-- `CONFIG_ENCRYPTION_KEY` - Database encryption key
-- `POSTGRES_PASSWORD` - PostgreSQL password
-
-#### Application
-- `PUBLIC_URL` - Your public URL (e.g., `https://readmeabook.example.com`)
-- `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `info`)
-- `PLEX_CLIENT_IDENTIFIER` - Custom Plex client ID (auto-generated if not set)
-
-#### Database
-- `POSTGRES_USER` - Database user (default: `readmeabook`)
-- `POSTGRES_DB` - Database name (default: `readmeabook`)
-
-**Generate secure secrets:**
-```bash
-openssl rand -base64 32
-```
-
-### Reverse Proxy Setup
-
-Example Nginx configuration:
-
-```nginx
-server {
-    listen 80;
-    server_name readmeabook.example.com;
-
-    location / {
-        proxy_pass http://localhost:3030;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-Don't forget to set the `PUBLIC_URL` environment variable in your docker-compose.yml:
 ```yaml
-environment:
-  PUBLIC_URL: "https://readmeabook.example.com"
+services:
+  readmeabook:
+    image: ghcr.io/kikootwo/readmeabook:latest
+    container_name: readmeabook
+    restart: unless-stopped
+    ports:
+      - "3030:3030"
+    volumes:
+      - ./config:/app/config
+      - ./cache:/app/cache
+      - ./downloads:/downloads
+      - ./media:/media
+      - ./pgdata:/var/lib/postgresql/data
+      - ./redis:/var/lib/redis
+    environment:
+      # Optional - set to your user/group ID for proper file permissions
+      PUID: 1000
+      PGID: 1000
+
+      # Required if accessing from outside localhost (for Plex OAuth)
+      PUBLIC_URL: "https://audiobooks.example.com"
 ```
 
----
+Update the volume paths to match your setup:
+- `/downloads` should point to your download client's directory
+- `/media` should point to your Plex audiobook library
 
-## 🔄 Updating
-
+Start it:
 ```bash
-# Pull latest image
-docker compose pull
-
-# Restart with new image
-docker compose up -d
-
-# View logs
-docker compose logs -f
-```
-
-Database migrations run automatically on startup.
-
----
-
-## 📊 Resource Usage
-
-The unified container typically uses:
-- **Memory:** ~500MB-1GB (depending on usage)
-- **CPU:** Low (spikes during library scans and downloads)
-- **Disk:** Varies based on database size and Redis cache
-- **Image Size:** ~3GB (includes PostgreSQL 16 + Redis + App)
-
----
-
-## 🐛 Troubleshooting
-
-### Container won't start
-```bash
-# Check logs for errors
-docker logs readmeabook
-
-# Check container status
-docker ps -a | grep readmeabook
-```
-
-### Database issues
-```bash
-# Access PostgreSQL directly
-docker exec -it readmeabook su - postgres -c "psql -h 127.0.0.1 -U readmeabook"
-
-# Check database status
-docker exec readmeabook su - postgres -c "pg_isready -h 127.0.0.1"
-```
-
-### Redis issues
-```bash
-# Test Redis connection
-docker exec readmeabook redis-cli ping
-# Should return: PONG
-```
-
-### Reset everything (⚠️ Warning: Deletes all data)
-```bash
-# Stop and remove container
-docker compose down
-
-# Remove volumes
-docker volume rm readmeabook-pgdata readmeabook-redis
-
-# Start fresh
 docker compose up -d
 ```
 
----
+Navigate to http://localhost:3030 and run through the setup wizard.
 
-## 📦 Backup & Restore
+### Initial Configuration
 
-### Backup Database
-```bash
-docker exec readmeabook su - postgres -c \
-  "pg_dump -h 127.0.0.1 -U readmeabook readmeabook" > backup.sql
-```
+The setup wizard walks you through:
+1. Admin account creation
+2. Plex server connection and library selection
+3. Prowlarr configuration (API key and indexer selection)
+4. Download client setup (qBittorrent or SABnzbd)
+5. Path configuration with validation
+6. Optional BookDate AI recommendations
+7. Review and finalization
 
-### Restore Database
-```bash
-cat backup.sql | docker exec -i readmeabook su - postgres -c \
-  "psql -h 127.0.0.1 -U readmeabook readmeabook"
-```
+After setup, the first library scan runs automatically. You can start requesting audiobooks immediately.
 
----
+## How It Works
 
-## 🏗️ Development
+**Request Flow:**
+1. Search for an audiobook (pulls metadata from Audible)
+2. Submit a request
+3. Prowlarr searches your configured indexers (torrents and/or NZBs)
+4. Best result is selected based on seeders, file size, and quality
+5. Download starts in qBittorrent or SABnzbd
+6. Files are monitored until completion
+7. Multi-file audiobooks are optionally merged into M4B with chapter markers
+8. Files are organized into your Plex library using configurable folder templates
+9. Plex scans and matches the audiobook
+10. Request marked as complete
 
-For local development and debugging, see:
-- **Local Build:** [docker-compose.local.yml](docker-compose.local.yml)
-- **Debug Mode:** [docker-compose.debug.yml](docker-compose.debug.yml) (separate PostgreSQL/Redis containers)
-- **Documentation:** [documentation/](documentation/)
+**BookDate Flow:**
+1. Configure AI provider in settings (OpenAI or Claude)
+2. Set your library scope (full library, rated books only, or pick favorites)
+3. AI analyzes your library and suggests recommendations
+4. Swipe right to request, left to skip, up to dismiss
+5. Requests are processed like normal requests
 
-### Project Structure
-```
-readmeabook/
-├── src/
-│   ├── app/              # Next.js app router pages
-│   ├── components/       # React components
-│   ├── lib/              # Utilities and helpers
-│   ├── services/         # Backend services (auth, jobs, config)
-│   └── generated/        # Prisma client
-├── prisma/
-│   └── schema.prisma     # Database schema
-├── documentation/        # Project documentation
-├── docker/               # Docker configuration
-└── public/               # Static assets
-```
+The system runs background jobs for library scanning, Audible metadata refresh, and request status checks. Everything is logged and visible in the admin dashboard.
 
----
+## Architecture
 
-## 🆚 Deployment Options
+Built with Next.js, PostgreSQL, and Redis. The container includes all three services in a single unified image. Background jobs are handled by Bull queues with Redis.
 
-### Unified Container (Default - docker-compose.yml)
-**✅ Best for:** Simple deployment, single-host, minimal configuration
+Authentication uses Plex OAuth, so users log in with their existing Plex accounts. The first user automatically becomes an admin. Admins can enable a request approval system if needed.
 
-- All services in one container (PostgreSQL + Redis + App)
-- Easiest to deploy and manage
-- Single container to update
-- ~3GB image size
+## Configuration
 
-### Multi-Container (docker-compose.debug.yml)
-**✅ Best for:** Development, debugging, separate service scaling
+All configuration happens in the web UI. The only environment variables you might need are:
+- `PUBLIC_URL` - Required for OAuth redirects if not using localhost
+- `PUID`/`PGID` - Optional, for file permission mapping
+- `LOG_LEVEL` - Optional, defaults to `info`
 
-- PostgreSQL, Redis, and App as separate containers
-- Independent service management
-- Better for development and testing
-- More flexible but requires more configuration
+Secrets (JWT keys, database password, encryption keys) are auto-generated on first run and persisted to `/app/config/.secrets`.
 
----
+## Advanced Features
 
-## 🔐 Security Best Practices
+**Chapter Merging:** When enabled, multi-file audiobook downloads (separate MP3/M4A files per chapter) are automatically merged into a single M4B file with proper chapter markers. Works for both M4A (fast, codec copy) and MP3 (re-encoded to AAC).
 
-1. **Change default secrets** in production (set environment variables)
-2. **Use HTTPS** via reverse proxy (Nginx, Caddy, Traefik)
-3. **Restrict port access** - only expose port 3030 to trusted networks
-4. **Keep container updated** - pull latest images regularly
-5. **Backup database** - regularly backup PostgreSQL data
-6. **Review user access** - Manage user roles appropriately
+**E-book Sidecar:** Optionally downloads e-books from Anna's Archive to accompany audiobooks. Files are placed in the same folder as the audiobook. Supports EPUB, PDF, MOBI, and AZW3 formats.
 
----
+**Request Approval:** Admins can enable a request approval system where user requests must be approved before processing. Useful for managing indexer limits or controlling library growth.
 
-## 📚 Documentation
+**Remote Path Mapping:** If your download client runs on a different machine or container, path mapping ensures ReadMeABook can find completed downloads.
 
-- **Full Documentation:** [documentation/](documentation/)
-- **Table of Contents:** [documentation/TABLEOFCONTENTS.md](documentation/TABLEOFCONTENTS.md)
-- **Agent Guidelines:** [AGENTS.md](AGENTS.md)
-- **Claude Guidelines:** [CLAUDE.md](CLAUDE.md)
+## Contributing
 
----
+Found a bug? Want to add a feature? Pull requests are welcome. The codebase is documented in the `documentation/` directory.
 
-## 🤝 Contributing
+If you want to discuss ideas or get help, join the Discord: **[DISCORD LINK PLACEHOLDER]**
 
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
+## Support
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+If this project is useful to you, the best way to support it is:
+- Star the repo
+- Share it with others who might find it useful
+- Contribute code, documentation, or bug reports
+
+Financial contributions are not expected or necessary. This project exists because I wanted it for myself, and sharing it costs nothing extra.
+
+## License
+
+MIT - See LICENSE file
 
 ---
 
-## 📝 License
-
-MIT License - see [LICENSE](LICENSE) for details
-
----
-
-## 🙏 Acknowledgments
-
-- **Plex** - Media server platform
-- **Prowlarr** - Indexer manager
-- **qBittorrent** - BitTorrent client
-- **Next.js** - React framework
-- **Prisma** - Database ORM
-- **PostgreSQL** - Database
-- **Redis** - Cache and job queue
-
----
-
-## 📧 Support
-
-- **Issues:** [GitHub Issues](https://github.com/kikootwo/ReadMeABook/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/kikootwo/ReadMeABook/discussions)
-
----
-
-**Made with ❤️ for audiobook enthusiasts**
+Built for people who want their audiobook library to just work.

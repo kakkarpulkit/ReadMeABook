@@ -163,6 +163,7 @@ export const validateAuthSettings = (settings: Settings): { valid: boolean; mess
 export const getTabValidation = (
   activeTab: SettingsTab,
   settings: Settings,
+  originalSettings: Settings | null,
   validated: {
     plex: boolean;
     audiobookshelf: boolean;
@@ -179,7 +180,15 @@ export const getTabValidation = (
     case 'auth':
       return validated.oidc || validated.registration;
     case 'prowlarr':
-      return validated.prowlarr;
+      // Only require validation if URL or API key changed
+      // If only indexers/flags changed, allow saving without test
+      if (!originalSettings) return validated.prowlarr;
+
+      const prowlarrConnectionChanged =
+        settings.prowlarr.url !== originalSettings.prowlarr.url ||
+        settings.prowlarr.apiKey !== originalSettings.prowlarr.apiKey;
+
+      return prowlarrConnectionChanged ? validated.prowlarr : true;
     case 'download':
       return validated.download;
     case 'paths':

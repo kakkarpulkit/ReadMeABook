@@ -121,7 +121,7 @@ export class AudibleService {
   private async fetchWithRetry(
     url: string,
     config: any = {},
-    maxRetries: number = 3
+    maxRetries: number = 5
   ): Promise<any> {
     let lastError: Error | null = null;
 
