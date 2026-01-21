@@ -12,6 +12,7 @@ const requireAuthMock = vi.hoisted(() => vi.fn());
 const prismaMock = createPrismaMock();
 const jobQueueMock = vi.hoisted(() => ({
   addDownloadJob: vi.fn(),
+  addNotificationJob: vi.fn(() => Promise.resolve()),
 }));
 const findPlexMatchMock = vi.hoisted(() => vi.fn());
 
@@ -29,6 +30,12 @@ vi.mock('@/lib/services/job-queue.service', () => ({
 
 vi.mock('@/lib/utils/audiobook-matcher', () => ({
   findPlexMatch: findPlexMatchMock,
+}));
+
+vi.mock('@/lib/integrations/audible.service', () => ({
+  getAudibleService: () => ({
+    getAudiobookDetails: vi.fn().mockResolvedValue(null),
+  }),
 }));
 
 describe('Request with torrent route', () => {
@@ -51,7 +58,7 @@ describe('Request with torrent route', () => {
       status: 'downloaded',
       userId: 'user-2',
       user: { plexUsername: 'other' },
-    });
+    } as any);
 
     const { POST } = await import('@/app/api/audiobooks/request-with-torrent/route');
     const response = await POST({} as any);
@@ -69,13 +76,19 @@ describe('Request with torrent route', () => {
     prismaMock.request.findFirst.mockResolvedValueOnce(null);
     findPlexMatchMock.mockResolvedValueOnce(null);
     prismaMock.audiobook.findFirst.mockResolvedValueOnce(null);
-    prismaMock.audiobook.create.mockResolvedValueOnce({ id: 'ab-1', title: 'Title', author: 'Author', audibleAsin: 'ASIN' });
+    prismaMock.audiobook.create.mockResolvedValueOnce({ id: 'ab-1', title: 'Title', author: 'Author', audibleAsin: 'ASIN' } as any);
     prismaMock.request.findFirst.mockResolvedValueOnce(null);
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'user-1',
+      role: 'admin',
+      autoApproveRequests: null,
+      plexUsername: 'user',
+    } as any);
     prismaMock.request.create.mockResolvedValueOnce({
       id: 'req-2',
       audiobook: { id: 'ab-1', title: 'Title', author: 'Author' },
       user: { id: 'user-1', plexUsername: 'user' },
-    });
+    } as any);
 
     const { POST } = await import('@/app/api/audiobooks/request-with-torrent/route');
     const response = await POST({} as any);

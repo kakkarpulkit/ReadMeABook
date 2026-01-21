@@ -122,28 +122,97 @@ async function handler(req: AuthenticatedRequest) {
         });
 
         if (!existingRequest) {
+          // Check if request needs approval (same logic as POST /api/requests)
+          let needsApproval = false;
+
+          // Fetch user with autoApproveRequests setting
+          const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+              role: true,
+              autoApproveRequests: true,
+              plexUsername: true,
+            },
+          });
+
+          if (!user) {
+            logger.error('User not found during request creation');
+            throw new Error('User not found');
+          }
+
+          // Determine if approval is needed
+          if (user.role === 'admin') {
+            // Admins always auto-approve
+            needsApproval = false;
+          } else {
+            // Check user's personal setting first
+            if (user.autoApproveRequests === true) {
+              needsApproval = false;
+            } else if (user.autoApproveRequests === false) {
+              needsApproval = true;
+            } else {
+              // User setting is null, check global setting
+              const globalConfig = await prisma.configuration.findUnique({
+                where: { key: 'auto_approve_requests' },
+              });
+              // Default to true if not configured (backward compatibility)
+              const globalAutoApprove = globalConfig === null ? true : globalConfig.value === 'true';
+              needsApproval = !globalAutoApprove;
+            }
+          }
+
+          // Determine initial status
+          const initialStatus = needsApproval ? 'awaiting_approval' : 'pending';
+
           const newRequest = await prisma.request.create({
             data: {
               userId,
               audiobookId: audiobook.id,
-              status: 'pending',
+              status: initialStatus,
               priority: 0,
             },
           });
 
-          logger.info(`Created request for "${recommendation.title}"`);
+          logger.info(`Created request for "${recommendation.title}" with status: ${initialStatus}`);
 
-          // Trigger search job (same as regular request creation)
+          // Import job queue service
           const { getJobQueueService } = await import('@/lib/services/job-queue.service');
           const jobQueue = getJobQueueService();
-          await jobQueue.addSearchJob(newRequest.id, {
-            id: audiobook.id,
-            title: audiobook.title,
-            author: audiobook.author,
-            asin: audiobook.audibleAsin || undefined,
-          });
 
-          logger.info(`Triggered search job for request ${newRequest.id}`);
+          // Send notification based on approval status
+          if (needsApproval) {
+            // Request needs approval - send pending notification
+            await jobQueue.addNotificationJob(
+              'request_pending_approval',
+              newRequest.id,
+              audiobook.title,
+              audiobook.author,
+              user.plexUsername || 'Unknown User'
+            ).catch((error) => {
+              logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+            });
+          } else {
+            // Request was auto-approved - send approved notification
+            await jobQueue.addNotificationJob(
+              'request_approved',
+              newRequest.id,
+              audiobook.title,
+              audiobook.author,
+              user.plexUsername || 'Unknown User'
+            ).catch((error) => {
+              logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+            });
+
+            // Trigger search job only if auto-approved
+            await jobQueue.addSearchJob(newRequest.id, {
+              id: audiobook.id,
+              title: audiobook.title,
+              author: audiobook.author,
+              asin: audiobook.audibleAsin || undefined,
+            });
+
+            logger.info(`Triggered search job for request ${newRequest.id}`);
+          }
         }
 
       } catch (error) {

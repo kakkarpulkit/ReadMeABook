@@ -19,9 +19,16 @@ const configMock = vi.hoisted(() => ({
 const thumbnailCacheServiceMock = vi.hoisted(() => ({
   cacheLibraryThumbnail: vi.fn(),
 }));
+const jobQueueMock = vi.hoisted(() => ({
+  addNotificationJob: vi.fn(() => Promise.resolve()),
+}));
 
 vi.mock('@/lib/db', () => ({
   prisma: prismaMock,
+}));
+
+vi.mock('@/lib/services/job-queue.service', () => ({
+  getJobQueueService: () => jobQueueMock,
 }));
 
 vi.mock('@/lib/services/library', () => ({
@@ -160,8 +167,11 @@ describe('processPlexRecentlyAddedCheck', () => {
           narrator: 'Narrator A',
           audibleAsin: 'ASIN-ABS',
         },
+        user: {
+          plexUsername: 'testuser',
+        },
       },
-    ]);
+    ] as any);
 
     (matcher.findPlexMatch as ReturnType<typeof vi.fn>).mockResolvedValue({
       plexGuid: 'abs-item-1',

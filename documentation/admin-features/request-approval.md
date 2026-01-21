@@ -3,7 +3,7 @@
 **Status:** ✅ Implemented | Admin approval workflow for user requests with global & per-user auto-approve controls
 
 ## Overview
-Allows admins to review and approve/deny user requests before they are processed. Supports global auto-approve toggle and per-user auto-approve overrides.
+Allows admins to review and approve/deny user requests before they are processed. Supports global auto-approve toggle and per-user auto-approve overrides. Interactive search requests store pre-selected torrents when approval is required.
 
 ## Key Details
 
@@ -21,19 +21,106 @@ Allows admins to review and approve/deny user requests before they are processed
   - `false` = Always require approval for this user
 
 ### Approval Logic
-**When user creates request:**
+
+**When user creates request (automatic search via POST /api/requests):**
 1. Check `User.autoApproveRequests`:
-   - If `true` → Set status to 'pending', trigger search job
-   - If `false` → Set status to 'awaiting_approval', wait for admin
+   - If `true` → Set status to 'pending', trigger search job, send approved notification
+   - If `false` → Set status to 'awaiting_approval', wait for admin, send pending notification
    - If `null` → Check global `auto_approve_requests` setting
-     - If 'true' → Auto-approve (status: 'pending')
-     - Otherwise → Require approval (status: 'awaiting_approval')
+     - If 'true' → Auto-approve (status: 'pending', send approved notification)
+     - Otherwise → Require approval (status: 'awaiting_approval', send pending notification)
+
+**When user creates request with pre-selected torrent (interactive search):**
+- **Via POST /api/audiobooks/request-with-torrent** (book detail page):
+  1. Check approval requirements (same logic as above)
+  2. If approval needed → Set status to 'awaiting_approval', store torrent in `selectedTorrent`, send pending notification
+  3. If auto-approved → Set status to 'downloading', start download immediately, send approved notification
+
+- **Via POST /api/requests/{id}/select-torrent** (existing request):
+  1. Check if request already in 'awaiting_approval' status → Block with 403 error
+  2. Check approval requirements based on CURRENT settings
+  3. If approval needed → Set status to 'awaiting_approval', store torrent in `selectedTorrent`, send pending notification
+  4. If auto-approved → Set status to 'downloading', start download immediately, send approved notification
 
 **Admin approval actions:**
-- **Approve** → Change status to 'pending', trigger search job
-- **Deny** → Change status to 'denied', no further processing
+- **Approve:**
+  - If request has `selectedTorrent` → Download that specific torrent (clear `selectedTorrent` field)
+  - If no `selectedTorrent` → Trigger automatic search job (status: 'pending')
+  - Send approved notification
+- **Deny:** → Change status to 'denied', no further processing
 
 ## API Endpoints
+
+### POST /api/audiobooks/request-with-torrent
+Create request with pre-selected torrent (book detail page interactive search)
+
+**Auth:** User or Admin
+
+**Request:**
+```json
+{
+  "audiobook": { /* audiobook metadata */ },
+  "torrent": { /* selected torrent data */ }
+}
+```
+
+**Approval Check:**
+- Checks approval requirements
+- If needed → Status 'awaiting_approval', stores torrent, sends pending notification
+- If auto-approved → Status 'downloading', starts download, sends approved notification
+
+**Response (awaiting approval):**
+```json
+{
+  "success": true,
+  "request": { /* request with status: 'awaiting_approval' */ },
+  "message": "Request submitted for admin approval"
+}
+```
+
+**Response (auto-approved):**
+```json
+{
+  "success": true,
+  "request": { /* request with status: 'downloading' */ }
+}
+```
+
+### POST /api/requests/[id]/select-torrent
+Select torrent for existing request (request page interactive search)
+
+**Auth:** User (owner) or Admin
+
+**Request:**
+```json
+{
+  "torrent": { /* selected torrent data */ }
+}
+```
+
+**Approval Check:**
+- Blocks if already in 'awaiting_approval' status
+- Re-checks approval requirements based on CURRENT settings
+- If needed → Status 'awaiting_approval', stores torrent, sends pending notification
+- If auto-approved → Status 'downloading', starts download, sends approved notification
+
+**Response (awaiting approval):**
+```json
+{
+  "success": true,
+  "request": { /* request with status: 'awaiting_approval' */ },
+  "message": "Request submitted for admin approval"
+}
+```
+
+**Response (auto-approved):**
+```json
+{
+  "success": true,
+  "request": { /* request with status: 'downloading' */ },
+  "message": "Torrent download initiated"
+}
+```
 
 ### GET /api/admin/requests/pending-approval
 Fetch all requests with status 'awaiting_approval'
@@ -76,12 +163,31 @@ Approve or deny a specific request
 }
 ```
 
-**Response (approve):**
+**Approval Logic:**
+- If request has `selectedTorrent`:
+  - Downloads that specific torrent directly (status: 'downloading')
+  - Clears `selectedTorrent` field after use
+  - Message: "Request approved and download started with pre-selected torrent"
+- If no `selectedTorrent`:
+  - Triggers automatic search job (status: 'pending')
+  - Message: "Request approved and search job triggered"
+- Both send approved notification
+
+**Response (approve with pre-selected torrent):**
+```json
+{
+  "success": true,
+  "message": "Request approved and download started with pre-selected torrent",
+  "request": { /* full request object with status: 'downloading' */ }
+}
+```
+
+**Response (approve without pre-selected torrent):**
 ```json
 {
   "success": true,
   "message": "Request approved and search job triggered",
-  "request": { /* full request object */ }
+  "request": { /* full request object with status: 'pending' */ }
 }
 ```
 
@@ -90,7 +196,7 @@ Approve or deny a specific request
 {
   "success": true,
   "message": "Request denied",
-  "request": { /* full request object */ }
+  "request": { /* full request object with status: 'denied' */ }
 }
 ```
 
@@ -188,10 +294,28 @@ Update user (includes autoApproveRequests field)
 - **denied** → Red badge with X icon
 - All other statuses → Existing badge colors
 
+## Security
+
+**Interactive Search Approval Enforcement:**
+- All interactive search flows (request-with-torrent, select-torrent) check approval requirements
+- If approval needed, torrent is stored in `selectedTorrent` field and request enters 'awaiting_approval' status
+- Admin sees exact torrent user selected when reviewing approval
+- Upon approval, admin approves THAT specific torrent (no re-search)
+
+**Settings Change Protection:**
+- `select-torrent` endpoint re-checks approval requirements based on CURRENT settings
+- Prevents bypass: User with auto-approve enabled creates request → Admin disables auto-approve → User tries to download
+- If settings changed, torrent is stored and request enters approval queue
+
+**Notification Timing:**
+- Automatic search: Notification sent immediately on request creation
+- Interactive search (auto-approved): Notification sent when torrent selected and download starts
+- Interactive search (approval needed): Pending notification sent immediately, approved notification sent on admin approval
+
 ## Database Schema
 
 ### User Table
-```
+```prisma
 autoApproveRequests: Boolean (nullable, default null)
 - null: Use global setting
 - true: Always auto-approve
@@ -199,17 +323,35 @@ autoApproveRequests: Boolean (nullable, default null)
 ```
 
 ### Request Table
-```
+```prisma
 status: Enum (includes 'awaiting_approval', 'denied')
+selectedTorrent: Json (nullable)
+- Stores pre-selected torrent data from interactive search
+- Set when approval needed, cleared after admin approval
+- Contains: guid, title, size, seeders, indexer, downloadUrl, format, etc.
 ```
 
 ### Configuration Table
-```
+```prisma
 key: 'auto_approve_requests'
 value: 'true' | 'false' (string)
 ```
+
+## Fixed Issues ✅
+
+**1. BookDate Requests Bypass Approval System**
+- Issue: Requests created through BookDate (right swipe) bypassed approval system entirely
+- Security Impact: Critical - allowed users to bypass admin approval controls
+- Cause: BookDate swipe route created requests with hardcoded 'pending' status, no approval checks, no notifications
+- Fix: Implemented full approval logic in BookDate swipe route (same as POST /api/requests)
+  - Checks user.autoApproveRequests and global auto_approve_requests setting
+  - Sets correct status ('awaiting_approval' or 'pending')
+  - Sends appropriate notifications (request_pending_approval or request_approved)
+  - Only triggers search job if auto-approved
+- Files updated: `src/app/api/bookdate/swipe/route.ts:124-217`, `tests/api/bookdate.routes.test.ts:470-648`
 
 ## Related
 - [Admin Dashboard](../admin-dashboard.md) - Dashboard UI features
 - [Database Schema](../backend/database.md) - User and Request tables
 - [Settings Pages](../settings-pages.md) - Global settings management
+- [BookDate Feature](../features/bookdate.md) - AI recommendations (Fixed Issues #9)

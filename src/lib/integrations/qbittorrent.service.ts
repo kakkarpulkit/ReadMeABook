@@ -8,6 +8,7 @@ import https from 'https';
 import * as parseTorrentModule from 'parse-torrent';
 import FormData from 'form-data';
 import { RMABLogger } from '../utils/logger';
+import { PathMapper, PathMappingConfig } from '../utils/path-mapper';
 
 // Handle both ESM and CommonJS imports
 const parseTorrent = (parseTorrentModule as any).default || parseTorrentModule;
@@ -87,6 +88,7 @@ export class QBittorrentService {
   private defaultCategory: string;
   private disableSSLVerify: boolean;
   private httpsAgent?: https.Agent;
+  private pathMappingConfig: PathMappingConfig;
 
   constructor(
     baseUrl: string,
@@ -94,7 +96,8 @@ export class QBittorrentService {
     password: string,
     defaultSavePath: string = '/downloads',
     defaultCategory: string = 'readmeabook',
-    disableSSLVerify: boolean = false
+    disableSSLVerify: boolean = false,
+    pathMappingConfig?: PathMappingConfig
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.username = username;
@@ -102,6 +105,7 @@ export class QBittorrentService {
     this.defaultSavePath = defaultSavePath;
     this.defaultCategory = defaultCategory;
     this.disableSSLVerify = disableSSLVerify;
+    this.pathMappingConfig = pathMappingConfig || { enabled: false, remotePath: '', localPath: '' };
 
     // Create HTTPS agent if SSL verification is disabled
     if (disableSSLVerify && this.baseUrl.startsWith('https')) {
@@ -270,10 +274,14 @@ export class QBittorrentService {
       // Torrent doesn't exist, continue with adding
     }
 
+    // Apply reverse path mapping (local → remote) to savepath
+    const localSavePath = options?.savePath || this.defaultSavePath;
+    const remoteSavePath = PathMapper.reverseTransform(localSavePath, this.pathMappingConfig);
+
     // Upload via 'urls' parameter
     const form = new URLSearchParams({
       urls: magnetUrl,
-      savepath: options?.savePath || this.defaultSavePath,
+      savepath: remoteSavePath,
       category,
       paused: options?.paused ? 'true' : 'false',
       sequentialDownload: (options?.sequentialDownload !== false).toString(),
@@ -408,6 +416,10 @@ export class QBittorrentService {
       // Torrent doesn't exist, continue with adding
     }
 
+    // Apply reverse path mapping (local → remote) to savepath
+    const localSavePath = options?.savePath || this.defaultSavePath;
+    const remoteSavePath = PathMapper.reverseTransform(localSavePath, this.pathMappingConfig);
+
     // Upload .torrent file content via multipart/form-data
     const formData = new FormData();
 
@@ -416,7 +428,7 @@ export class QBittorrentService {
       filename,
       contentType: 'application/x-bittorrent',
     });
-    formData.append('savepath', options?.savePath || this.defaultSavePath);
+    formData.append('savepath', remoteSavePath);
     formData.append('category', category);
     formData.append('paused', options?.paused ? 'true' : 'false');
     formData.append('sequentialDownload', (options?.sequentialDownload !== false).toString());
@@ -996,6 +1008,9 @@ export async function getQBittorrentService(): Promise<QBittorrentService> {
         'download_client_password',
         'download_dir',
         'download_client_disable_ssl_verify',
+        'download_client_remote_path_mapping_enabled',
+        'download_client_remote_path',
+        'download_client_local_path',
       ]);
 
       logger.info('[QBittorrent] Config loaded:', {
@@ -1004,6 +1019,7 @@ export async function getQBittorrentService(): Promise<QBittorrentService> {
         hasPassword: !!config.download_client_password,
         hasPath: !!config.download_dir,
         disableSSLVerify: config.download_client_disable_ssl_verify === 'true',
+        pathMappingEnabled: config.download_client_remote_path_mapping_enabled === 'true',
       });
 
       // Validate all required fields are present (no env var fallback)
@@ -1035,6 +1051,13 @@ export async function getQBittorrentService(): Promise<QBittorrentService> {
       const savePath = config.download_dir as string;
       const disableSSLVerify = config.download_client_disable_ssl_verify === 'true';
 
+      // Path mapping configuration
+      const pathMappingConfig: PathMappingConfig = {
+        enabled: config.download_client_remote_path_mapping_enabled === 'true',
+        remotePath: config.download_client_remote_path || '',
+        localPath: config.download_client_local_path || '',
+      };
+
       logger.info('[QBittorrent] Creating service instance...');
       qbittorrentService = new QBittorrentService(
         url,
@@ -1042,7 +1065,8 @@ export async function getQBittorrentService(): Promise<QBittorrentService> {
         password,
         savePath,
         'readmeabook',
-        disableSSLVerify
+        disableSSLVerify,
+        pathMappingConfig
       );
 
       // Test connection

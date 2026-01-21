@@ -75,42 +75,123 @@ export async function POST(
 
         // Update request based on action
         if (action === 'approve') {
-          // Approve: Change status to 'pending' and trigger search job
-          const updatedRequest = await prisma.request.update({
-            where: { id },
-            data: { status: 'pending' },
-            include: {
-              audiobook: true,
-              user: {
-                select: {
-                  id: true,
-                  plexUsername: true,
+          const jobQueue = getJobQueueService();
+
+          // Check if request has a pre-selected torrent (from interactive search)
+          if (existingRequest.selectedTorrent) {
+            // User pre-selected a specific torrent - download that torrent directly
+            logger.info(`Request ${id} has pre-selected torrent, starting download`, {
+              requestId: id,
+              userId: existingRequest.userId,
+              adminId: req.user.sub,
+            });
+
+            // Trigger download job with pre-selected torrent
+            await jobQueue.addDownloadJob(
+              existingRequest.id,
+              {
+                id: existingRequest.audiobook.id,
+                title: existingRequest.audiobook.title,
+                author: existingRequest.audiobook.author,
+              },
+              existingRequest.selectedTorrent as any
+            );
+
+            // Update status to 'downloading' and clear selectedTorrent
+            const updatedRequest = await prisma.request.update({
+              where: { id },
+              data: {
+                status: 'downloading',
+                selectedTorrent: null as any, // Clear after use
+              },
+              include: {
+                audiobook: true,
+                user: {
+                  select: {
+                    id: true,
+                    plexUsername: true,
+                  },
                 },
               },
-            },
-          });
+            });
 
-          // Trigger search job
-          const jobQueue = getJobQueueService();
-          await jobQueue.addSearchJob(updatedRequest.id, {
-            id: updatedRequest.audiobook.id,
-            title: updatedRequest.audiobook.title,
-            author: updatedRequest.audiobook.author,
-            asin: updatedRequest.audiobook.audibleAsin || undefined,
-          });
+            // Send notification for manual approval
+            await jobQueue.addNotificationJob(
+              'request_approved',
+              updatedRequest.id,
+              existingRequest.audiobook.title,
+              existingRequest.audiobook.author,
+              existingRequest.user.plexUsername || 'Unknown User'
+            ).catch((error) => {
+              logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+            });
 
-          logger.info(`Request ${id} approved by admin ${req.user.sub}`, {
-            requestId: id,
-            userId: updatedRequest.userId,
-            audiobookTitle: updatedRequest.audiobook.title,
-            adminId: req.user.sub,
-          });
+            logger.info(`Request ${id} approved by admin ${req.user.sub}, downloading pre-selected torrent`, {
+              requestId: id,
+              userId: updatedRequest.userId,
+              audiobookTitle: existingRequest.audiobook.title,
+              adminId: req.user.sub,
+            });
 
-          return NextResponse.json({
-            success: true,
-            message: 'Request approved and search job triggered',
-            request: updatedRequest,
-          });
+            return NextResponse.json({
+              success: true,
+              message: 'Request approved and download started with pre-selected torrent',
+              request: updatedRequest,
+            });
+          } else {
+            // No pre-selected torrent - use automatic search
+            logger.info(`Request ${id} using automatic search`, {
+              requestId: id,
+              userId: existingRequest.userId,
+              adminId: req.user.sub,
+            });
+
+            const updatedRequest = await prisma.request.update({
+              where: { id },
+              data: { status: 'pending' },
+              include: {
+                audiobook: true,
+                user: {
+                  select: {
+                    id: true,
+                    plexUsername: true,
+                  },
+                },
+              },
+            });
+
+            // Trigger search job
+            await jobQueue.addSearchJob(updatedRequest.id, {
+              id: updatedRequest.audiobook.id,
+              title: updatedRequest.audiobook.title,
+              author: updatedRequest.audiobook.author,
+              asin: updatedRequest.audiobook.audibleAsin || undefined,
+            });
+
+            // Send notification for manual approval
+            await jobQueue.addNotificationJob(
+              'request_approved',
+              updatedRequest.id,
+              updatedRequest.audiobook.title,
+              updatedRequest.audiobook.author,
+              updatedRequest.user.plexUsername || 'Unknown User'
+            ).catch((error) => {
+              logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+            });
+
+            logger.info(`Request ${id} approved by admin ${req.user.sub}`, {
+              requestId: id,
+              userId: updatedRequest.userId,
+              audiobookTitle: updatedRequest.audiobook.title,
+              adminId: req.user.sub,
+            });
+
+            return NextResponse.json({
+              success: true,
+              message: 'Request approved and search job triggered',
+              request: updatedRequest,
+            });
+          }
         } else {
           // Deny: Change status to 'denied'
           const updatedRequest = await prisma.request.update({

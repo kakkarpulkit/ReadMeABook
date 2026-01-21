@@ -19,9 +19,16 @@ const configMock = vi.hoisted(() => ({
 const thumbnailCacheServiceMock = vi.hoisted(() => ({
   cacheLibraryThumbnail: vi.fn(),
 }));
+const jobQueueMock = vi.hoisted(() => ({
+  addNotificationJob: vi.fn(() => Promise.resolve()),
+}));
 
 vi.mock('@/lib/utils/audiobook-matcher', () => ({
   findPlexMatch: vi.fn(),
+}));
+
+vi.mock('@/lib/services/job-queue.service', () => ({
+  getJobQueueService: () => jobQueueMock,
 }));
 
 vi.mock('@/lib/services/audiobookshelf/api', () => ({
@@ -260,8 +267,11 @@ describe('processScanPlex', () => {
           narrator: 'Narrator',
           audibleAsin: 'ASIN123',
         },
+        user: {
+          plexUsername: 'testuser',
+        },
       },
-    ]);
+    ] as any);
     prismaMock.audiobook.update.mockResolvedValue({});
     prismaMock.request.update.mockResolvedValue({});
 

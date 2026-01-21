@@ -88,35 +88,54 @@ This prevents issues where category retains old save path after user changes `do
 **Use Case:** qBittorrent runs on different machine/container with different filesystem perspective.
 
 **Example Scenario:**
-- qBittorrent reports: `/remote/mnt/d/done/Audiobook.Name`
-- ReadMeABook needs: `/downloads/Audiobook.Name`
-- Mapping: Remote `/remote/mnt/d/done` → Local `/downloads`
+- qBittorrent on Windows expects: `F:\Docker\downloads\completed\books`
+- ReadMeABook inside Docker sees: `/downloads`
+- Mapping: Remote `F:\Docker\downloads\completed\books` ↔ Local `/downloads`
 
 **Configuration:**
 1. Admin Settings → Download Client → Enable Remote Path Mapping
-2. Enter remote path (as reported by qBittorrent)
-3. Enter local path (accessible to ReadMeABook)
+2. Enter remote path (as qBittorrent sees it, e.g., `F:\Docker\downloads\completed\books`)
+3. Enter local path (as RMAB sees it, e.g., `/downloads`)
 4. Test connection validates local path exists
 5. Save settings
 
+**Bidirectional Path Mapping:**
+
+**1. Outgoing (RMAB → qBittorrent):** When adding torrents
+- RMAB's download path: `/downloads`
+- Translated to qBit's path: `F:\Docker\downloads\completed\books`
+- Applied in `qbittorrent.service.ts` via `PathMapper.reverseTransform()`
+- Ensures qBittorrent knows where to save files
+
+**2. Incoming (qBittorrent → RMAB):** When processing completed downloads
+- qBit reports: `F:\Docker\downloads\completed\books\Audiobook.Name`
+- Translated to RMAB's path: `/downloads/Audiobook.Name`
+- Applied in `monitor-download.processor.ts` via `PathMapper.transform()`
+- Applied in `retry-failed-imports.processor.ts` for failed imports
+- Ensures RMAB can find and organize files
+
 **Implementation:**
 - `PathMapper` utility (`src/lib/utils/path-mapper.ts`) handles transformation
-- Applied in `monitor-download.processor.ts` when download completes
-- Applied in `retry-failed-imports.processor.ts` for failed imports
+- `transform()`: Remote → Local (qBit → RMAB)
+- `reverseTransform()`: Local → Remote (RMAB → qBit)
 - Uses simple prefix replacement with path normalization
-- Graceful fallback: if path doesn't match remote prefix, returns unchanged
+- Preserves Windows backslashes when translating to Windows paths
+- Graceful fallback: if path doesn't match prefix, returns unchanged
 
-**Path Transformation:**
+**Path Transformation Examples:**
+
 ```typescript
-// Input from qBittorrent
-qbPath = "/remote/mnt/d/done/Audiobook.Name"
-
-// Config
-remotePath = "/remote/mnt/d/done"
+// Outgoing: RMAB → qBittorrent (when adding torrent)
 localPath = "/downloads"
+config = { remotePath: "F:\\Docker\\downloads\\completed\\books", localPath: "/downloads" }
+remotePath = PathMapper.reverseTransform(localPath, config)
+// Result: "F:\Docker\downloads\completed\books"
 
-// Output (used for file organization)
-organizePath = "/downloads/Audiobook.Name"
+// Incoming: qBittorrent → RMAB (when processing completion)
+qbPath = "F:\\Docker\\downloads\\completed\\books\\Audiobook.Name"
+config = { remotePath: "F:\\Docker\\downloads\\completed\\books", localPath: "/downloads" }
+organizePath = PathMapper.transform(qbPath, config)
+// Result: "/downloads/Audiobook.Name"
 ```
 
 **Validation:**
@@ -126,9 +145,10 @@ organizePath = "/downloads/Audiobook.Name"
 
 **Behavior:**
 - Mapping only applies when enabled
-- If path doesn't start with remote prefix, returns original (logs warning)
+- If path doesn't start with expected prefix, returns original (logs warning)
 - Path normalization handles trailing slashes, backslashes, redundant separators
 - Works with both `content_path` and constructed `save_path + name`
+- Preserves native path separators (important for Windows)
 
 ## Data Models
 
@@ -188,6 +208,13 @@ type TorrentState = 'downloading' | 'uploading' | 'stalledDL' |
    - Applied to axios client instance and all standalone requests
    - Works transparently with or without reverse proxy
    - Compatible with popular seedbox providers (seedit4.me, etc.)
+**14. Remote path mapping not applied when adding torrents** - When qBittorrent runs locally (e.g., Windows) and RMAB runs in Docker, savepath sent to qBittorrent was not translated. qBittorrent received `/downloads` (RMAB's path) but expected `F:\Docker\downloads\completed\books` (Windows path), causing "Invalid path" errors. Fixed by:
+   - Added `PathMapper.reverseTransform()` for bidirectional path mapping (local → remote)
+   - Applied in `qbittorrent.service.ts` when setting savepath for torrents
+   - Preserves Windows backslashes when translating to Windows paths
+   - Path mapping now works in both directions: outgoing (RMAB → qBit) and incoming (qBit → RMAB)
+   - Service constructor accepts `PathMappingConfig` parameter
+   - Singleton loads path mapping config from database
 
 ## Tech Stack
 

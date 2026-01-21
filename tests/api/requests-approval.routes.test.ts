@@ -13,6 +13,8 @@ const requireAdminMock = vi.hoisted(() => vi.fn());
 const prismaMock = createPrismaMock();
 const jobQueueMock = vi.hoisted(() => ({
   addSearchJob: vi.fn(),
+  addNotificationJob: vi.fn(() => Promise.resolve()),
+  addDownloadJob: vi.fn(),
 }));
 const findPlexMatchMock = vi.hoisted(() => vi.fn());
 
@@ -269,17 +271,28 @@ describe('Request Approval Workflow', () => {
         audiobook: { asin: 'ASIN-7', title: 'Test Book', author: 'Test Author' },
       });
 
+      // Mock first request.findFirst call (check for existing requests by ASIN)
+      prismaMock.request.findFirst.mockResolvedValueOnce(null);
+      // Mock findPlexMatch
+      findPlexMatchMock.mockResolvedValueOnce(null);
+      // Mock audiobook.findFirst
+      prismaMock.audiobook.findFirst.mockResolvedValueOnce(null);
+
       prismaMock.audiobook.create.mockResolvedValueOnce({
         id: 'ab-7',
         title: 'Test Book',
         author: 'Test Author',
         audibleAsin: 'ASIN-7',
-      });
+      } as any);
+
+      // Mock second request.findFirst call (check for user's existing request)
+      prismaMock.request.findFirst.mockResolvedValueOnce(null);
 
       prismaMock.user.findUnique.mockResolvedValue({
         id: 'user-1',
         role: 'user',
         autoApproveRequests: true,
+        plexUsername: 'testuser',
       } as any);
 
       prismaMock.request.create.mockResolvedValue({
@@ -520,6 +533,7 @@ describe('Request Approval Workflow', () => {
       prismaMock.request.findUnique.mockResolvedValue({
         id: 'req-1',
         status: 'awaiting_approval',
+        selectedTorrent: null,
         userId: 'user-1',
         audiobook: { id: 'ab-1', title: 'Test Book', author: 'Test Author', audibleAsin: 'ASIN-1' },
         user: { id: 'user-1', plexUsername: 'testuser' },
@@ -569,6 +583,7 @@ describe('Request Approval Workflow', () => {
       prismaMock.request.findUnique.mockResolvedValue({
         id: 'req-2',
         status: 'awaiting_approval',
+        selectedTorrent: null,
         userId: 'user-1',
         audiobook: { id: 'ab-2', title: 'Test Book 2', author: 'Test Author 2', audibleAsin: 'ASIN-2' },
         user: { id: 'user-1', plexUsername: 'testuser' },

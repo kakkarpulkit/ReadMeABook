@@ -63,6 +63,14 @@ export async function POST(
         );
       }
 
+      // Check if request is awaiting approval
+      if (requestRecord.status === 'awaiting_approval') {
+        return NextResponse.json(
+          { error: 'AwaitingApproval', message: 'This request is awaiting admin approval. You cannot search for torrents until it is approved.' },
+          { status: 403 }
+        );
+      }
+
       // Get enabled indexers from configuration
       const { getConfigService } = await import('@/lib/services/config.service');
       const configService = getConfigService();

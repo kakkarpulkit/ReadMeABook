@@ -210,6 +210,7 @@ model Request {
   progress         Int       @default(0) // 0-100
   priority         Int       @default(0)
   errorMessage     String?   @map("error_message") @db.Text
+  selectedTorrent  Json?     @map("selected_torrent") // Pre-selected torrent from interactive search (stored when awaiting approval)
   searchAttempts   Int       @default(0) @map("search_attempts")
   downloadAttempts Int       @default(0) @map("download_attempts")
   importAttempts   Int       @default(0) @map("import_attempts")
@@ -419,4 +420,18 @@ model BookDateSwipe {
   @@index([userId, createdAt])
   @@index([recommendationId])
   @@map("bookdate_swipes")
+}
+
+model NotificationBackend {
+  id        String   @id @default(uuid())
+  type      String   // 'discord' | 'pushover' | 'email' | 'slack' | 'telegram' | 'webhook'
+  name      String   // User-friendly label
+  config    Json     // Type-specific config (encrypted sensitive values)
+  events    Json     @default("[]") // Array of event strings
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([enabled])
+  @@map("notification_backends")
 }

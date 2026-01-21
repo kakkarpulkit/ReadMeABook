@@ -45,6 +45,78 @@ describe('PathMapper', () => {
       PathMapper.validate({ enabled: true, remotePath: '/remote', localPath: '' })
     ).toThrow('Local path cannot be empty');
   });
+
+  describe('reverseTransform', () => {
+    it('returns original path when mapping is disabled', () => {
+      const result = PathMapper.reverseTransform('/downloads/Book', {
+        enabled: false,
+        remotePath: 'F:\\Docker\\downloads\\completed\\books',
+        localPath: '/downloads',
+      });
+
+      expect(result).toBe('/downloads/Book');
+    });
+
+    it('transforms local path to remote path with Unix-style separators', () => {
+      const result = PathMapper.reverseTransform('/downloads/Audiobook.Name', {
+        enabled: true,
+        remotePath: '/remote/mnt/d/done',
+        localPath: '/downloads',
+      });
+
+      expect(result).toBe('/remote/mnt/d/done/Audiobook.Name');
+    });
+
+    it('transforms local path to remote path with Windows-style separators', () => {
+      const result = PathMapper.reverseTransform('/downloads/Audiobook.Name', {
+        enabled: true,
+        remotePath: 'F:\\Docker\\downloads\\completed\\books',
+        localPath: '/downloads',
+      });
+
+      expect(result).toBe('F:\\Docker\\downloads\\completed\\books\\Audiobook.Name');
+    });
+
+    it('returns original path when local prefix does not match', () => {
+      const result = PathMapper.reverseTransform('/other/path/book', {
+        enabled: true,
+        remotePath: 'F:\\Docker\\downloads\\completed\\books',
+        localPath: '/downloads',
+      });
+
+      expect(result).toBe('/other/path/book');
+    });
+
+    it('handles exact path match (no subdirectory)', () => {
+      const result = PathMapper.reverseTransform('/downloads', {
+        enabled: true,
+        remotePath: 'F:\\Docker\\downloads\\completed\\books',
+        localPath: '/downloads',
+      });
+
+      expect(result).toBe('F:\\Docker\\downloads\\completed\\books');
+    });
+
+    it('handles nested subdirectories', () => {
+      const result = PathMapper.reverseTransform('/downloads/Author/Book Name/file.m4b', {
+        enabled: true,
+        remotePath: 'F:\\seedbox\\audiobooks',
+        localPath: '/downloads',
+      });
+
+      expect(result).toBe('F:\\seedbox\\audiobooks\\Author\\Book Name\\file.m4b');
+    });
+
+    it('handles trailing slashes in config', () => {
+      const result = PathMapper.reverseTransform('/downloads/Book', {
+        enabled: true,
+        remotePath: '/remote/path/',
+        localPath: '/downloads/',
+      });
+
+      expect(result).toBe('/remote/path/Book');
+    });
+  });
 });
 
 

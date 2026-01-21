@@ -425,6 +425,30 @@ Personalized audiobook discovery using OpenAI/Claude APIs. Admin configures AI p
   - Added tests to verify 401 from external provider returns 400 to client
 - Files updated: `src/app/api/bookdate/test-connection/route.ts:190-197,382-389`, `tests/api/bookdate-test-connection.routes.test.ts:254-294`
 
+**9. BookDate Requests Bypass Approval System**
+- Issue: Requests created through BookDate (right swipe) bypass the approval system entirely
+- User Experience: "BookDate requests don't go through approval even when approval is required, and I don't get any notifications about them"
+- Security Impact: Critical - allows users to bypass admin approval controls
+- Cause: BookDate swipe route created requests directly without checking approval requirements
+  - `src/app/api/bookdate/swipe/route.ts:124-146` hardcoded status as 'pending'
+  - Did not check user.autoApproveRequests or global auto_approve_requests setting
+  - Did not send any notifications (pending approval or approved)
+  - Immediately triggered search job regardless of approval status
+  - Contrast with POST /api/requests which properly implements approval logic
+- Fix: Implement full approval logic in BookDate swipe route (same as POST /api/requests)
+  - Fetch user with autoApproveRequests setting
+  - Check approval requirements: user setting → global setting → default (true)
+  - Set status: 'awaiting_approval' if approval needed, 'pending' if auto-approved
+  - Send appropriate notification: request_pending_approval or request_approved
+  - Only trigger search job if auto-approved (not if awaiting approval)
+  - Admins always auto-approve (role === 'admin')
+- Files updated: `src/app/api/bookdate/swipe/route.ts:124-217`, `tests/api/bookdate.routes.test.ts:470-648`
+- Tests added:
+  - Admin user auto-approves (status: 'pending', sends approved notification, triggers search)
+  - User with autoApproveRequests=false requires approval (status: 'awaiting_approval', sends pending notification, no search)
+  - User with autoApproveRequests=true auto-approves (status: 'pending', sends approved notification, triggers search)
+  - User with autoApproveRequests=null checks global setting
+
 ## Related
 
 - Full requirements: [features/bookdate-prd.md](bookdate-prd.md)

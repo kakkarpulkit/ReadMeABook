@@ -19,6 +19,7 @@ const configState = vi.hoisted(() => ({
 const jobQueueMock = vi.hoisted(() => ({
   addSearchJob: vi.fn(),
   addDownloadJob: vi.fn(),
+  addNotificationJob: vi.fn(() => Promise.resolve()),
 }));
 const downloadEbookMock = vi.hoisted(() => vi.fn());
 const fsMock = vi.hoisted(() => ({
@@ -114,9 +115,16 @@ describe('Request action routes', () => {
     prismaMock.request.findUnique.mockResolvedValueOnce({
       id: 'req-3',
       userId: 'user-1',
+      status: 'awaiting_search',
       audiobook: { id: 'ab-2', title: 'Title', author: 'Author' },
-    });
-    prismaMock.request.update.mockResolvedValueOnce({ id: 'req-3', status: 'downloading' });
+    } as any);
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'user-1',
+      role: 'admin',
+      autoApproveRequests: null,
+      plexUsername: 'testuser',
+    } as any);
+    prismaMock.request.update.mockResolvedValueOnce({ id: 'req-3', status: 'downloading', audiobook: { title: 'Title' } } as any);
 
     const { POST } = await import('@/app/api/requests/[id]/select-torrent/route');
     const response = await POST({} as any, { params: Promise.resolve({ id: 'req-3' }) });

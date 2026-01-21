@@ -20,6 +20,7 @@ const configServiceMock = vi.hoisted(() => ({
 }));
 const jobQueueMock = vi.hoisted(() => ({
   addSearchJob: vi.fn().mockResolvedValue(undefined),
+  addNotificationJob: vi.fn(() => Promise.resolve()),
 }));
 const bookdateHelpersMock = vi.hoisted(() => ({
   buildAIPrompt: vi.fn(),
@@ -29,9 +30,16 @@ const bookdateHelpersMock = vi.hoisted(() => ({
   isAlreadyRequested: vi.fn(),
   isAlreadySwiped: vi.fn(),
 }));
+const audibleServiceMock = vi.hoisted(() => ({
+  getAudiobookDetails: vi.fn(),
+}));
 
 vi.mock('@/lib/db', () => ({
   prisma: prismaMock,
+}));
+
+vi.mock('@/lib/integrations/audible.service', () => ({
+  getAudibleService: () => audibleServiceMock,
 }));
 
 vi.mock('@/lib/middleware/auth', () => ({
@@ -428,7 +436,7 @@ describe('BookDate routes', () => {
     expect(payload.recommendations).toHaveLength(1);
   });
 
-  it('records swipe and creates request on right swipe', async () => {
+  it('records swipe and creates request on right swipe (admin auto-approves)', async () => {
     authRequest.json.mockResolvedValue({ recommendationId: 'rec-1', action: 'right', markedAsKnown: false });
     prismaMock.bookDateRecommendation.findUnique.mockResolvedValueOnce({
       id: 'rec-1',
@@ -436,19 +444,178 @@ describe('BookDate routes', () => {
       title: 'Title',
       author: 'Author',
       audnexusAsin: 'ASIN',
-    });
-    prismaMock.bookDateSwipe.create.mockResolvedValueOnce({});
+    } as any);
+    prismaMock.bookDateSwipe.create.mockResolvedValueOnce({} as any);
     prismaMock.audiobook.findFirst.mockResolvedValueOnce(null);
-    prismaMock.audiobook.create.mockResolvedValueOnce({ id: 'ab-1', title: 'Title', author: 'Author', audibleAsin: 'ASIN' });
+    prismaMock.audiobook.create.mockResolvedValueOnce({ id: 'ab-1', title: 'Title', author: 'Author', audibleAsin: 'ASIN' } as any);
     prismaMock.request.findFirst.mockResolvedValueOnce(null);
-    prismaMock.request.create.mockResolvedValueOnce({ id: 'req-1' });
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'user-1',
+      role: 'admin',
+      autoApproveRequests: null,
+      plexUsername: 'testuser',
+    } as any);
+    prismaMock.request.create.mockResolvedValueOnce({ id: 'req-1', audiobook: { title: 'Title' }, user: { id: 'user-1', plexUsername: 'testuser' } } as any);
 
     const { POST } = await import('@/app/api/bookdate/swipe/route');
     const response = await POST({} as any);
     const payload = await response.json();
 
     expect(payload.success).toBe(true);
+    expect(prismaMock.request.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'pending',
+        }),
+      })
+    );
+    expect(jobQueueMock.addNotificationJob).toHaveBeenCalledWith(
+      'request_approved',
+      'req-1',
+      'Title',
+      'Author',
+      'testuser'
+    );
     expect(jobQueueMock.addSearchJob).toHaveBeenCalled();
+  });
+
+  it('creates request with awaiting_approval status when approval required (user with autoApproveRequests=false)', async () => {
+    authRequest = { user: { id: 'user-2', role: 'user' }, json: vi.fn() };
+    requireAuthMock.mockImplementation((_req: any, handler: any) => handler(authRequest));
+    authRequest.json.mockResolvedValue({ recommendationId: 'rec-2', action: 'right', markedAsKnown: false });
+    prismaMock.bookDateRecommendation.findUnique.mockResolvedValueOnce({
+      id: 'rec-2',
+      userId: 'user-2',
+      title: 'Title 2',
+      author: 'Author 2',
+      audnexusAsin: 'ASIN2',
+    } as any);
+    prismaMock.bookDateSwipe.create.mockResolvedValueOnce({} as any);
+    prismaMock.audiobook.findFirst.mockResolvedValueOnce(null);
+    prismaMock.audiobook.create.mockResolvedValueOnce({ id: 'ab-2', title: 'Title 2', author: 'Author 2', audibleAsin: 'ASIN2' } as any);
+    prismaMock.request.findFirst.mockResolvedValueOnce(null);
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'user-2',
+      role: 'user',
+      autoApproveRequests: false,
+      plexUsername: 'testuser2',
+    } as any);
+    prismaMock.request.create.mockResolvedValueOnce({ id: 'req-2', audiobook: { title: 'Title 2' }, user: { id: 'user-2', plexUsername: 'testuser2' } } as any);
+
+    const { POST } = await import('@/app/api/bookdate/swipe/route');
+    const response = await POST({} as any);
+    const payload = await response.json();
+
+    expect(payload.success).toBe(true);
+    expect(prismaMock.request.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'awaiting_approval',
+        }),
+      })
+    );
+    expect(jobQueueMock.addNotificationJob).toHaveBeenCalledWith(
+      'request_pending_approval',
+      'req-2',
+      'Title 2',
+      'Author 2',
+      'testuser2'
+    );
+    expect(jobQueueMock.addSearchJob).not.toHaveBeenCalled();
+  });
+
+  it('creates request with pending status when user has autoApproveRequests=true', async () => {
+    authRequest = { user: { id: 'user-3', role: 'user' }, json: vi.fn() };
+    requireAuthMock.mockImplementation((_req: any, handler: any) => handler(authRequest));
+    authRequest.json.mockResolvedValue({ recommendationId: 'rec-3', action: 'right', markedAsKnown: false });
+    prismaMock.bookDateRecommendation.findUnique.mockResolvedValueOnce({
+      id: 'rec-3',
+      userId: 'user-3',
+      title: 'Title 3',
+      author: 'Author 3',
+      audnexusAsin: 'ASIN3',
+    } as any);
+    prismaMock.bookDateSwipe.create.mockResolvedValueOnce({} as any);
+    prismaMock.audiobook.findFirst.mockResolvedValueOnce(null);
+    prismaMock.audiobook.create.mockResolvedValueOnce({ id: 'ab-3', title: 'Title 3', author: 'Author 3', audibleAsin: 'ASIN3' } as any);
+    prismaMock.request.findFirst.mockResolvedValueOnce(null);
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'user-3',
+      role: 'user',
+      autoApproveRequests: true,
+      plexUsername: 'testuser3',
+    } as any);
+    prismaMock.request.create.mockResolvedValueOnce({ id: 'req-3', audiobook: { title: 'Title 3' }, user: { id: 'user-3', plexUsername: 'testuser3' } } as any);
+
+    const { POST } = await import('@/app/api/bookdate/swipe/route');
+    const response = await POST({} as any);
+    const payload = await response.json();
+
+    expect(payload.success).toBe(true);
+    expect(prismaMock.request.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'pending',
+        }),
+      })
+    );
+    expect(jobQueueMock.addNotificationJob).toHaveBeenCalledWith(
+      'request_approved',
+      'req-3',
+      'Title 3',
+      'Author 3',
+      'testuser3'
+    );
+    expect(jobQueueMock.addSearchJob).toHaveBeenCalled();
+  });
+
+  it('checks global setting when user autoApproveRequests is null', async () => {
+    authRequest = { user: { id: 'user-4', role: 'user' }, json: vi.fn() };
+    requireAuthMock.mockImplementation((_req: any, handler: any) => handler(authRequest));
+    authRequest.json.mockResolvedValue({ recommendationId: 'rec-4', action: 'right', markedAsKnown: false });
+    prismaMock.bookDateRecommendation.findUnique.mockResolvedValueOnce({
+      id: 'rec-4',
+      userId: 'user-4',
+      title: 'Title 4',
+      author: 'Author 4',
+      audnexusAsin: 'ASIN4',
+    } as any);
+    prismaMock.bookDateSwipe.create.mockResolvedValueOnce({} as any);
+    prismaMock.audiobook.findFirst.mockResolvedValueOnce(null);
+    prismaMock.audiobook.create.mockResolvedValueOnce({ id: 'ab-4', title: 'Title 4', author: 'Author 4', audibleAsin: 'ASIN4' } as any);
+    prismaMock.request.findFirst.mockResolvedValueOnce(null);
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'user-4',
+      role: 'user',
+      autoApproveRequests: null,
+      plexUsername: 'testuser4',
+    } as any);
+    prismaMock.configuration.findUnique.mockResolvedValueOnce({
+      key: 'auto_approve_requests',
+      value: 'false',
+    } as any);
+    prismaMock.request.create.mockResolvedValueOnce({ id: 'req-4', audiobook: { title: 'Title 4' }, user: { id: 'user-4', plexUsername: 'testuser4' } } as any);
+
+    const { POST } = await import('@/app/api/bookdate/swipe/route');
+    const response = await POST({} as any);
+    const payload = await response.json();
+
+    expect(payload.success).toBe(true);
+    expect(prismaMock.request.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'awaiting_approval',
+        }),
+      })
+    );
+    expect(jobQueueMock.addNotificationJob).toHaveBeenCalledWith(
+      'request_pending_approval',
+      'req-4',
+      'Title 4',
+      'Author 4',
+      'testuser4'
+    );
+    expect(jobQueueMock.addSearchJob).not.toHaveBeenCalled();
   });
 
   it('undoes last swipe', async () => {

@@ -68,6 +68,66 @@ export class PathMapper {
   }
 
   /**
+   * Reverse transforms a local path to qBittorrent remote path (local-to-remote mapping)
+   *
+   * Example:
+   *   Local path: /downloads/Audiobook.Name
+   *   Config: { enabled: true, remotePath: 'F:\\Docker\\downloads\\completed\\books', localPath: '/downloads' }
+   *   Returns: F:\Docker\downloads\completed\books\Audiobook.Name
+   *
+   * @param localPath - Path from ReadMeABook's perspective (inside Docker)
+   * @param config - Path mapping configuration
+   * @returns Transformed path for qBittorrent (or original if mapping disabled/no match)
+   */
+  static reverseTransform(localPath: string, config: PathMappingConfig): string {
+    // 1. If mapping disabled, return original
+    if (!config.enabled) {
+      return localPath;
+    }
+
+    // 2. Handle empty paths
+    if (!localPath || !config.remotePath || !config.localPath) {
+      logger.warn('Empty path or config, returning original');
+      return localPath;
+    }
+
+    // 3. Normalize paths
+    const normalizedRemote = this.normalizePath(config.remotePath);
+    const normalizedLocal = this.normalizePath(config.localPath);
+    const normalizedLocalPath = this.normalizePath(localPath);
+
+    // 4. Check if local path starts with local prefix
+    if (!normalizedLocalPath.startsWith(normalizedLocal)) {
+      logger.warn(
+        `Path "${localPath}" does not start with local path "${config.localPath}". ` +
+        `Returning original path unchanged.`
+      );
+      return localPath;
+    }
+
+    // 5. Replace local prefix with remote prefix
+    const relativePath = normalizedLocalPath.substring(normalizedLocal.length);
+
+    // For remote path, preserve original path separators (important for Windows)
+    // Use the original remote path's separators instead of normalizing
+    const remoteSeparator = config.remotePath.includes('\\') ? '\\' : '/';
+    const remotePathNormalized = config.remotePath.replace(/[/\\]+$/, ''); // Remove trailing slashes
+
+    // Build the final path with remote separators
+    let transformedPath: string;
+    if (relativePath) {
+      // Convert forward slashes to remote separator
+      const relativeWithRemoteSep = relativePath.replace(/^[/\\]+/, '').replace(/\//g, remoteSeparator);
+      transformedPath = remotePathNormalized + remoteSeparator + relativeWithRemoteSep;
+    } else {
+      transformedPath = remotePathNormalized;
+    }
+
+    logger.info(`Reverse transformed "${localPath}" to "${transformedPath}"`);
+    return transformedPath;
+  }
+
+  /**
    * Validates path mapping configuration
    *
    * @param config - Path mapping configuration to validate

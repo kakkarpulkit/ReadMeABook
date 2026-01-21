@@ -24,7 +24,8 @@ export type JobType =
   | 'retry_missing_torrents'
   | 'retry_failed_imports'
   | 'cleanup_seeded_torrents'
-  | 'monitor_rss_feeds';
+  | 'monitor_rss_feeds'
+  | 'send_notification';
 
 export interface JobPayload {
   jobId?: string; // Database job ID (added automatically by addJob)
@@ -100,6 +101,16 @@ export interface RetryFailedImportsPayload extends JobPayload {
 
 export interface CleanupSeededTorrentsPayload extends JobPayload {
   scheduledJobId?: string;
+}
+
+export interface SendNotificationPayload extends JobPayload {
+  event: 'request_pending_approval' | 'request_approved' | 'request_available' | 'request_error';
+  requestId: string;
+  title: string;
+  author: string;
+  userName: string;
+  message?: string;
+  timestamp: Date;
 }
 
 export interface QueueStats {
@@ -297,6 +308,12 @@ export class JobQueueService {
       const { processCleanupSeededTorrents } = await import('../processors/cleanup-seeded-torrents.processor');
       const payloadWithJobId = await this.ensureJobRecord(job, 'cleanup_seeded_torrents');
       return await processCleanupSeededTorrents(payloadWithJobId);
+    });
+
+    // Send notification processor
+    this.queue.process('send_notification', 5, async (job: BullJob<SendNotificationPayload>) => {
+      const { processSendNotification } = await import('../processors/send-notification.processor');
+      return await processSendNotification(job.data);
     });
   }
 
@@ -788,6 +805,35 @@ export class JobQueueService {
   async close(): Promise<void> {
     await this.queue.close();
     this.redis.disconnect();
+  }
+
+  /**
+   * Add notification job
+   */
+  async addNotificationJob(
+    event: 'request_pending_approval' | 'request_approved' | 'request_available' | 'request_error',
+    requestId: string,
+    title: string,
+    author: string,
+    userName: string,
+    message?: string
+  ): Promise<string> {
+    logger.info(`Queueing notification: ${event}`, { requestId, title, userName });
+    return await this.addJob(
+      'send_notification',
+      {
+        event,
+        requestId,
+        title,
+        author,
+        userName,
+        message,
+        timestamp: new Date(),
+      } as SendNotificationPayload,
+      {
+        priority: 5, // Medium priority
+      }
+    );
   }
 
   /**

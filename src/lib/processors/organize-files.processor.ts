@@ -253,15 +253,40 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
         // Max retries exceeded - move to warn status
         logger.warn(`Max retries (${currentRequest.maxImportRetries}) exceeded for request ${requestId}, moving to warn status`);
 
+        const warnMessage = `${errorMessage}. Max retries (${currentRequest.maxImportRetries}) exceeded. Manual retry available.`;
+
         await prisma.request.update({
           where: { id: requestId },
           data: {
             status: 'warn',
             importAttempts: newAttempts,
-            errorMessage: `${errorMessage}. Max retries (${currentRequest.maxImportRetries}) exceeded. Manual retry available.`,
+            errorMessage: warnMessage,
             updatedAt: new Date(),
           },
         });
+
+        // Send notification for request failure
+        const request = await prisma.request.findUnique({
+          where: { id: requestId },
+          include: {
+            audiobook: true,
+            user: { select: { plexUsername: true } },
+          },
+        });
+
+        if (request) {
+          const jobQueue = getJobQueueService();
+          await jobQueue.addNotificationJob(
+            'request_error',
+            request.id,
+            request.audiobook.title,
+            request.audiobook.author,
+            request.user.plexUsername || 'Unknown User',
+            warnMessage
+          ).catch((error) => {
+            logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+          });
+        }
 
         return {
           success: false,
@@ -281,6 +306,29 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
           updatedAt: new Date(),
         },
       });
+
+      // Send notification for request failure
+      const request = await prisma.request.findUnique({
+        where: { id: requestId },
+        include: {
+          audiobook: true,
+          user: { select: { plexUsername: true } },
+        },
+      });
+
+      if (request) {
+        const jobQueue = getJobQueueService();
+        await jobQueue.addNotificationJob(
+          'request_error',
+          request.id,
+          request.audiobook.title,
+          request.audiobook.author,
+          request.user.plexUsername || 'Unknown User',
+          errorMessage
+        ).catch((error) => {
+          logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+        });
+      }
 
       throw error;
     }

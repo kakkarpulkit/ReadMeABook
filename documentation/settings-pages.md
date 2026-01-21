@@ -70,6 +70,7 @@ src/app/admin/settings/
 4. **Download Client** - Type, URL, credentials (masked)
 5. **Paths** - Download + media directories, audiobook organization template, metadata tagging toggle, chapter merging toggle
 6. **BookDate** - AI provider, API key (encrypted), model selection, library scope, custom prompt, swipe history
+7. **Notifications** - Multiple backends (Discord, Pushover), event subscriptions, test functionality
 
 ## Audible Region
 
@@ -300,3 +301,38 @@ src/app/admin/settings/
   - Allow saving indexer config changes without re-testing connection
   - Button text adapts: "Test Connection" vs "Refresh Indexers"
 - Behavior: Natural workflow - see current settings, modify indexers, save immediately
+
+## Notifications
+
+**Purpose:** Configure notification backends to receive alerts for audiobook request events.
+
+**Configuration:**
+- Multiple backends per type (Discord, Pushover)
+- Per-backend event subscriptions (4 events)
+- Encrypted sensitive values (webhook URLs, API keys)
+- Enable/disable toggle per backend
+
+**UI (NotificationsTab):**
+- Type selector cards: Discord (indigo "D"), Pushover (blue "P")
+- Grid layout for configured backends (3 columns)
+- Card shows: type icon, name, enabled status, event count
+- Edit/delete actions per card
+
+**Modal (NotificationConfigModal):**
+- Type-specific forms (Discord: webhook/username/avatar, Pushover: keys/priority)
+- Event subscription checkboxes (4 events)
+- Enable/disable toggle
+- Test button (sends sample notification)
+- Password masking for sensitive values
+
+**Event Types:**
+- Request Pending Approval - Admin approval required
+- Request Approved - Approved (manual or auto)
+- Request Available - Available in library
+- Request Error - Failed at any stage
+
+**Validation:**
+- Name required
+- Discord: webhook URL required
+- Pushover: user key + app token required
+- At least one event selected

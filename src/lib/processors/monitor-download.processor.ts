@@ -196,12 +196,14 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
     } else if (progress.state === 'failed') {
       logger.error(`Download failed for request ${requestId}`);
 
+      const errorMessage = 'Download failed in qBittorrent';
+
       // Update request to failed
       await prisma.request.update({
         where: { id: requestId },
         data: {
           status: 'failed',
-          errorMessage: 'Download failed in qBittorrent',
+          errorMessage,
           updatedAt: new Date(),
         },
       });
@@ -211,9 +213,32 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
         where: { id: downloadHistoryId },
         data: {
           downloadStatus: 'failed',
-          downloadError: 'Download failed in qBittorrent',
+          downloadError: errorMessage,
         },
       });
+
+      // Send notification for request failure
+      const request = await prisma.request.findUnique({
+        where: { id: requestId },
+        include: {
+          audiobook: true,
+          user: { select: { plexUsername: true } },
+        },
+      });
+
+      if (request) {
+        const jobQueue = getJobQueueService();
+        await jobQueue.addNotificationJob(
+          'request_error',
+          request.id,
+          request.audiobook.title,
+          request.audiobook.author,
+          request.user.plexUsername || 'Unknown User',
+          errorMessage
+        ).catch((error) => {
+          logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+        });
+      }
 
       return {
         success: false,
@@ -266,14 +291,38 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
       logger.warn(`Transient error for request ${requestId}, allowing Bull to retry`);
     } else {
       // Permanent error - mark request as failed immediately
+      const failureMessage = errorMessage || 'Monitor download failed';
       await prisma.request.update({
         where: { id: requestId },
         data: {
           status: 'failed',
-          errorMessage: errorMessage || 'Monitor download failed',
+          errorMessage: failureMessage,
           updatedAt: new Date(),
         },
       });
+
+      // Send notification for request failure
+      const request = await prisma.request.findUnique({
+        where: { id: requestId },
+        include: {
+          audiobook: true,
+          user: { select: { plexUsername: true } },
+        },
+      });
+
+      if (request) {
+        const jobQueue = getJobQueueService();
+        await jobQueue.addNotificationJob(
+          'request_error',
+          request.id,
+          request.audiobook.title,
+          request.audiobook.author,
+          request.user.plexUsername || 'Unknown User',
+          failureMessage
+        ).catch((error) => {
+          logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+        });
+      }
     }
 
     // Rethrow to trigger Bull's retry mechanism

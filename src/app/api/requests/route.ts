@@ -252,9 +252,35 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      const jobQueue = getJobQueueService();
+
+      // Send notification based on approval status
+      if (initialStatus === 'awaiting_approval') {
+        // Request needs approval - send pending notification
+        await jobQueue.addNotificationJob(
+          'request_pending_approval',
+          newRequest.id,
+          audiobookRecord.title,
+          audiobookRecord.author,
+          newRequest.user.plexUsername || 'Unknown User'
+        ).catch((error) => {
+          logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+        });
+      } else {
+        // Request was auto-approved (either automatic or interactive search) - send approved notification
+        await jobQueue.addNotificationJob(
+          'request_approved',
+          newRequest.id,
+          audiobookRecord.title,
+          audiobookRecord.author,
+          newRequest.user.plexUsername || 'Unknown User'
+        ).catch((error) => {
+          logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+        });
+      }
+
       // Trigger search job only if not skipped and not awaiting approval
       if (shouldTriggerSearch) {
-        const jobQueue = getJobQueueService();
         await jobQueue.addSearchJob(newRequest.id, {
           id: audiobookRecord.id,
           title: audiobookRecord.title,

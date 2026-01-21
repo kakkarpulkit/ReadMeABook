@@ -62,10 +62,96 @@ export async function POST(
         );
       }
 
+      // Check if request is awaiting approval
+      if (requestRecord.status === 'awaiting_approval') {
+        return NextResponse.json(
+          { error: 'AwaitingApproval', message: 'This request is awaiting admin approval. You cannot download torrents until it is approved.' },
+          { status: 403 }
+        );
+      }
+
+      // Re-check if approval is needed based on CURRENT settings (security: settings may have changed)
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          role: true,
+          autoApproveRequests: true,
+          plexUsername: true,
+        },
+      });
+
+      if (!user) {
+        return NextResponse.json(
+          { error: 'UserNotFound', message: 'User not found' },
+          { status: 404 }
+        );
+      }
+
+      let needsApproval = false;
+
+      // Determine if approval is needed (same logic as request creation)
+      if (user.role === 'admin') {
+        // Admins always auto-approve
+        needsApproval = false;
+      } else {
+        // Check user's personal setting first
+        if (user.autoApproveRequests === true) {
+          needsApproval = false;
+        } else if (user.autoApproveRequests === false) {
+          needsApproval = true;
+        } else {
+          // User setting is null, check global setting
+          const globalConfig = await prisma.configuration.findUnique({
+            where: { key: 'auto_approve_requests' },
+          });
+          // Default to true if not configured (backward compatibility)
+          const globalAutoApprove = globalConfig === null ? true : globalConfig.value === 'true';
+          needsApproval = !globalAutoApprove;
+        }
+      }
+
+      const jobQueue = getJobQueueService();
+
+      // If approval is now needed, store torrent and wait for approval
+      if (needsApproval) {
+        logger.info(`Torrent selection requires approval`, { requestId: id, userId: req.user.id });
+
+        const updated = await prisma.request.update({
+          where: { id },
+          data: {
+            status: 'awaiting_approval',
+            selectedTorrent: torrent as any, // Store the selected torrent
+            updatedAt: new Date(),
+          },
+          include: {
+            audiobook: true,
+          },
+        });
+
+        // Send pending approval notification
+        await jobQueue.addNotificationJob(
+          'request_pending_approval',
+          updated.id,
+          requestRecord.audiobook.title,
+          requestRecord.audiobook.author,
+          user.plexUsername || 'Unknown User'
+        ).catch((error) => {
+          logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+        });
+
+        logger.info(`Request ${id} stored selected torrent and awaits admin approval`);
+
+        return NextResponse.json({
+          success: true,
+          request: updated,
+          message: 'Request submitted for admin approval',
+        });
+      }
+
+      // Auto-approved - start download immediately
       logger.info(`User selected torrent: ${torrent.title}`, { requestId: id });
 
       // Trigger download job with the selected torrent
-      const jobQueue = getJobQueueService();
       await jobQueue.addDownloadJob(
         id,
         {
@@ -75,6 +161,17 @@ export async function POST(
         },
         torrent
       );
+
+      // Send approved notification (user has now committed to downloading)
+      await jobQueue.addNotificationJob(
+        'request_approved',
+        id,
+        requestRecord.audiobook.title,
+        requestRecord.audiobook.author,
+        user.plexUsername || 'Unknown User'
+      ).catch((error) => {
+        logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+      });
 
       // Update request status
       const updated = await prisma.request.update({

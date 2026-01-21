@@ -366,7 +366,14 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
         status: { notIn: ['available', 'cancelled'] },
         deletedAt: null,
       },
-      include: { audiobook: true },
+      include: {
+        audiobook: true,
+        user: {
+          select: {
+            plexUsername: true,
+          },
+        },
+      },
       take: 100, // Increased from 50 to handle more eligible requests
     });
 
@@ -421,6 +428,19 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
               importAttempts: 0,
               updatedAt: new Date(),
             },
+          });
+
+          // Send notification that audiobook is now available
+          const { getJobQueueService } = await import('../services/job-queue.service');
+          const jobQueue = getJobQueueService();
+          await jobQueue.addNotificationJob(
+            'request_available',
+            request.id,
+            audiobook.title,
+            audiobook.author,
+            request.user.plexUsername || 'Unknown User'
+          ).catch((error) => {
+            logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
           });
 
           matchedCount++;

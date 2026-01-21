@@ -12,6 +12,7 @@ const requireAuthMock = vi.hoisted(() => vi.fn());
 const prismaMock = createPrismaMock();
 const jobQueueMock = vi.hoisted(() => ({
   addSearchJob: vi.fn(),
+  addNotificationJob: vi.fn(() => Promise.resolve()),
 }));
 const findPlexMatchMock = vi.hoisted(() => vi.fn());
 
@@ -29,6 +30,12 @@ vi.mock('@/lib/services/job-queue.service', () => ({
 
 vi.mock('@/lib/utils/audiobook-matcher', () => ({
   findPlexMatch: findPlexMatchMock,
+}));
+
+vi.mock('@/lib/integrations/audible.service', () => ({
+  getAudibleService: () => ({
+    getAudiobookDetails: vi.fn().mockResolvedValue(null),
+  }),
 }));
 
 describe('Requests API routes', () => {
@@ -51,7 +58,7 @@ describe('Requests API routes', () => {
       status: 'downloaded',
       userId: 'user-2',
       user: { plexUsername: 'someone' },
-    });
+    } as any);
 
     const { POST } = await import('@/app/api/requests/route');
     const response = await POST({} as any);
