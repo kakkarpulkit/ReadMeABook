@@ -1,0 +1,108 @@
+# ReadMeABook - Unified Dockerfile
+# Single container with PostgreSQL, Redis, and Next.js app
+# Designed for easy deployment with minimal configuration
+
+# Start from debian base with node preinstalled
+FROM node:20-bookworm AS base
+
+# Install PostgreSQL 16 repository key
+RUN apt-get update && apt-get install -y curl gnupg && \
+    install -d /etc/apt/keyrings && \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/postgresql.list
+
+# Install PostgreSQL, Redis, and supervisord
+RUN apt-get update && apt-get install -y \
+    postgresql-16 \
+    postgresql-client-16 \
+    redis-server \
+    supervisor \
+    curl \
+    openssl \
+    ffmpeg \
+    locales \
+    && sed -i 's/^# \(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen \
+    && locale-gen en_US.UTF-8 \
+    && update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
+
+# Install ALL dependencies (including dev dependencies needed for build)
+RUN npm ci && npm cache clean --force
+
+# Copy application code (before generating Prisma to avoid overwriting)
+COPY . .
+
+# Generate Prisma client AFTER copying code (prevents stale generated files from overwriting)
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy?schema=public"
+RUN npx prisma generate
+
+# Build Next.js application
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+ENV TURBOPACK=0
+RUN npm run build
+
+# Reorganize for standalone output
+# Next.js standalone mode creates .next/standalone/ with server.js
+# We need to move files to root for supervisord to find server.js
+RUN cp -r .next/standalone/* . && \
+    cp -r .next/static ./.next/static && \
+    cp -r public ./public 2>/dev/null || true
+
+# Remove dev dependencies to reduce image size
+RUN npm prune --production
+
+# Create necessary directories
+RUN mkdir -p \
+    /var/run/postgresql \
+    /var/lib/postgresql/data \
+    /var/lib/redis \
+    /app/config \
+    /app/cache \
+    /downloads \
+    /media \
+    /app/.next/cache \
+    /var/log/supervisor
+
+# Setup PostgreSQL
+RUN chown -R postgres:postgres /var/lib/postgresql /var/run/postgresql && \
+    chmod 2777 /var/run/postgresql
+
+# Setup Redis data directory
+RUN chown -R redis:redis /var/lib/redis
+
+# Setup app directories (node user)
+RUN chown -R node:node /app/config /app/cache /downloads /media /app/.next/cache
+
+# Copy supervisord configuration
+COPY --chown=root:root docker/unified/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Copy entrypoint script
+COPY --chown=root:root docker/unified/entrypoint.sh /entrypoint.sh
+# Convert line endings (Windows CRLF -> Unix LF) and make executable
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+
+# Copy app startup wrapper
+COPY --chown=root:root docker/unified/app-start.sh /app/app-start.sh
+# Convert line endings and make executable
+RUN sed -i 's/\r$//' /app/app-start.sh && chmod +x /app/app-start.sh
+
+# Expose app port
+EXPOSE 3030
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3030/api/health || exit 1
+
+# Set entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
