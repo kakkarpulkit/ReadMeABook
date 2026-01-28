@@ -44,7 +44,11 @@ export function generateFilesHash(filePaths: string[]): string {
 
   // Extract basenames and filter to audio files only
   const audioBasenames = filePaths
-    .map((filePath) => path.basename(filePath))
+    .map((filePath) => {
+      // Normalize path separators to forward slashes for cross-platform consistency
+      const normalizedPath = filePath.replace(/\\/g, '/');
+      return path.posix.basename(normalizedPath);
+    })
     .filter((basename) => {
       const ext = path.extname(basename).toLowerCase();
       return AUDIO_EXTENSIONS.includes(ext);
