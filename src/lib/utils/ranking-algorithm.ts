@@ -42,6 +42,18 @@ export interface RankTorrentsOptions {
   requireAuthor?: boolean;                   // Enforce author presence check (default: true)
 }
 
+export interface EbookTorrentRequest {
+  title: string;
+  author: string;
+  preferredFormat: string;  // User's preferred format (epub, pdf, etc.)
+}
+
+export interface RankEbookTorrentsOptions {
+  indexerPriorities?: Map<number, number>;  // indexerId -> priority (1-25)
+  flagConfigs?: IndexerFlagConfig[];         // Flag bonus configurations
+  requireAuthor?: boolean;                   // Enforce author presence check (default: true)
+}
+
 export interface BonusModifier {
   type: 'indexer_priority' | 'indexer_flag' | 'custom';
   value: number;        // Multiplier (e.g., 0.4 for 40%)
@@ -65,6 +77,24 @@ export interface RankedTorrent extends TorrentResult {
   finalScore: number;         // score + bonusPoints
   rank: number;
   breakdown: ScoreBreakdown;
+}
+
+export interface EbookScoreBreakdown {
+  formatScore: number;        // 0-10 points (match preferred = 10, else 0)
+  sizeScore: number;          // 0-15 points (inverted - smaller is better)
+  seederScore: number;        // 0-15 points (same as audiobooks)
+  matchScore: number;         // 0-60 points (same as audiobooks)
+  totalScore: number;
+  notes: string[];
+}
+
+export interface RankedEbookTorrent extends TorrentResult {
+  score: number;              // Base score (0-100)
+  bonusModifiers: BonusModifier[];
+  bonusPoints: number;        // Sum of all bonus points
+  finalScore: number;         // score + bonusPoints
+  rank: number;
+  breakdown: EbookScoreBreakdown;
 }
 
 export class RankingAlgorithm {
@@ -622,6 +652,257 @@ export class RankingAlgorithm {
 
     return notes;
   }
+
+  // =========================================================================
+  // EBOOK TORRENT RANKING (for indexer results)
+  // Reuses scoreMatch() and scoreSeeders() from audiobook ranking
+  // Uses ebook-specific format and size scoring
+  // =========================================================================
+
+  /**
+   * Rank ebook torrents from indexers
+   * Reuses title/author matching and seeder scoring from audiobook ranking
+   * Uses ebook-specific format scoring (10 pts for match, 0 otherwise)
+   * Uses inverted size scoring (smaller = better, > 20MB filtered)
+   *
+   * @param torrents - Array of torrent results from Prowlarr
+   * @param ebook - Ebook request details (title, author, preferredFormat)
+   * @param options - Optional configuration for ranking behavior
+   */
+  rankEbookTorrents(
+    torrents: TorrentResult[],
+    ebook: EbookTorrentRequest,
+    options: RankEbookTorrentsOptions = {}
+  ): RankedEbookTorrent[] {
+    const {
+      indexerPriorities,
+      flagConfigs,
+      requireAuthor = true  // Safe default: require author in automatic mode
+    } = options;
+
+    // Filter out files > 20 MB (too large for ebooks)
+    const filteredTorrents = torrents.filter((torrent) => {
+      const sizeMB = torrent.size / (1024 * 1024);
+      return sizeMB <= 20;
+    });
+
+    const ranked = filteredTorrents.map((torrent) => {
+      // Calculate base scores (0-100)
+      // Reuse scoreMatch and scoreSeeders from audiobook ranking
+      const formatScore = this.scoreEbookFormat(torrent, ebook.preferredFormat);
+      const sizeScore = this.scoreEbookSize(torrent);
+      const seederScore = this.scoreSeeders(torrent.seeders);
+      const matchScore = this.scoreMatch(torrent, {
+        title: ebook.title,
+        author: ebook.author,
+      }, requireAuthor);
+
+      const baseScore = formatScore + sizeScore + seederScore + matchScore;
+
+      // Calculate bonus modifiers (same as audiobooks)
+      const bonusModifiers: BonusModifier[] = [];
+
+      // Indexer priority bonus (default: 10/25 = 40%)
+      if (torrent.indexerId !== undefined) {
+        const priority = indexerPriorities?.get(torrent.indexerId) ?? 10;
+        const modifier = priority / 25;  // Convert 1-25 to 0.04-1.0 (4%-100%)
+        const points = baseScore * modifier;
+
+        bonusModifiers.push({
+          type: 'indexer_priority',
+          value: modifier,
+          points: points,
+          reason: `Indexer priority ${priority}/25 (${Math.round(modifier * 100)}%)`,
+        });
+      }
+
+      // Flag bonuses/penalties (same as audiobooks)
+      if (torrent.flags && torrent.flags.length > 0 && flagConfigs && flagConfigs.length > 0) {
+        torrent.flags.forEach(torrentFlag => {
+          const matchingConfig = flagConfigs.find(cfg =>
+            cfg.name.trim().toLowerCase() === torrentFlag.trim().toLowerCase()
+          );
+
+          if (matchingConfig) {
+            const modifier = matchingConfig.modifier / 100;
+            const points = baseScore * modifier;
+
+            bonusModifiers.push({
+              type: 'indexer_flag',
+              value: modifier,
+              points: points,
+              reason: `Flag "${torrentFlag}" (${matchingConfig.modifier > 0 ? '+' : ''}${matchingConfig.modifier}%)`,
+            });
+          }
+        });
+      }
+
+      // Sum all bonus points
+      const bonusPoints = bonusModifiers.reduce((sum, mod) => sum + mod.points, 0);
+
+      // Calculate final score
+      const finalScore = baseScore + bonusPoints;
+
+      return {
+        ...torrent,
+        score: baseScore,
+        bonusModifiers,
+        bonusPoints,
+        finalScore,
+        rank: 0, // Will be assigned after sorting
+        breakdown: {
+          formatScore,
+          sizeScore,
+          seederScore,
+          matchScore,
+          totalScore: baseScore,
+          notes: this.generateEbookNotes(torrent, {
+            formatScore,
+            sizeScore,
+            seederScore,
+            matchScore,
+            totalScore: baseScore,
+            notes: [],
+          }, ebook.preferredFormat),
+        },
+      };
+    });
+
+    // Sort by finalScore descending (best first), then by publishDate descending (newest first)
+    ranked.sort((a, b) => {
+      if (b.finalScore !== a.finalScore) {
+        return b.finalScore - a.finalScore;
+      }
+      return b.publishDate.getTime() - a.publishDate.getTime();
+    });
+
+    // Assign ranks
+    ranked.forEach((r, index) => {
+      r.rank = index + 1;
+    });
+
+    return ranked;
+  }
+
+  /**
+   * Score ebook format (10 points max)
+   * Full points for matching preferred format, 0 otherwise
+   */
+  private scoreEbookFormat(torrent: TorrentResult, preferredFormat: string): number {
+    const detectedFormat = this.detectEbookFormat(torrent);
+    const preferred = preferredFormat.toLowerCase();
+
+    // Exact match = full points, otherwise 0
+    if (detectedFormat === preferred) {
+      return 10;
+    }
+
+    return 0;
+  }
+
+  /**
+   * Score ebook file size (15 points max, inverted - smaller is better)
+   * < 5 MB = 15 pts (full)
+   * 5-15 MB = 10 pts
+   * 15-20 MB = 5 pts
+   * > 20 MB = filtered out (not scored)
+   */
+  private scoreEbookSize(torrent: TorrentResult): number {
+    const sizeMB = torrent.size / (1024 * 1024);
+
+    if (sizeMB < 5) {
+      return 15; // Optimal size for ebooks
+    } else if (sizeMB <= 15) {
+      return 10; // Acceptable, may have images
+    } else if (sizeMB <= 20) {
+      return 5;  // Large but within limit
+    }
+
+    // > 20 MB should have been filtered, but return 0 as safety
+    return 0;
+  }
+
+  /**
+   * Detect ebook format from torrent title
+   */
+  private detectEbookFormat(torrent: TorrentResult): string {
+    const title = torrent.title.toLowerCase();
+
+    // Check for common ebook format extensions/keywords
+    if (title.includes('.epub') || title.includes(' epub')) return 'epub';
+    if (title.includes('.pdf') || title.includes(' pdf')) return 'pdf';
+    if (title.includes('.mobi') || title.includes(' mobi')) return 'mobi';
+    if (title.includes('.azw3') || title.includes(' azw3')) return 'azw3';
+    if (title.includes('.azw') || title.includes(' azw')) return 'azw';
+    if (title.includes('.fb2') || title.includes(' fb2')) return 'fb2';
+    if (title.includes('.cbz') || title.includes(' cbz')) return 'cbz';
+    if (title.includes('.cbr') || title.includes(' cbr')) return 'cbr';
+
+    // Default to unknown
+    return 'unknown';
+  }
+
+  /**
+   * Generate human-readable notes for ebook scoring
+   */
+  private generateEbookNotes(
+    torrent: TorrentResult,
+    breakdown: EbookScoreBreakdown,
+    preferredFormat: string
+  ): string[] {
+    const notes: string[] = [];
+
+    // Format notes
+    const detectedFormat = this.detectEbookFormat(torrent);
+    if (breakdown.formatScore === 10) {
+      notes.push(`✓ Preferred format (${detectedFormat.toUpperCase()})`);
+    } else if (detectedFormat !== 'unknown') {
+      notes.push(`Different format (${detectedFormat.toUpperCase()}, wanted ${preferredFormat.toUpperCase()})`);
+    } else {
+      notes.push('⚠️ Unknown format');
+    }
+
+    // Size notes
+    const sizeMB = torrent.size / (1024 * 1024);
+    if (sizeMB < 5) {
+      notes.push('✓ Optimal file size');
+    } else if (sizeMB <= 15) {
+      notes.push('Good file size (may have images)');
+    } else if (sizeMB <= 20) {
+      notes.push('⚠️ Large file size');
+    }
+
+    // Seeder notes (same logic as audiobooks)
+    if (torrent.seeders !== undefined && torrent.seeders !== null && !isNaN(torrent.seeders)) {
+      if (torrent.seeders === 0) {
+        notes.push('⚠️ No seeders available');
+      } else if (torrent.seeders < 5) {
+        notes.push(`Low seeders (${torrent.seeders})`);
+      } else if (torrent.seeders >= 50) {
+        notes.push(`Excellent availability (${torrent.seeders} seeders)`);
+      }
+    }
+
+    // Match notes (same thresholds as audiobooks)
+    if (breakdown.matchScore < 24) {
+      notes.push('⚠️ Poor title/author match');
+    } else if (breakdown.matchScore < 42) {
+      notes.push('⚠️ Weak title/author match');
+    } else if (breakdown.matchScore >= 54) {
+      notes.push('✓ Excellent title/author match');
+    }
+
+    // Overall quality assessment
+    if (breakdown.totalScore >= 75) {
+      notes.push('✓ Excellent choice');
+    } else if (breakdown.totalScore >= 55) {
+      notes.push('✓ Good choice');
+    } else if (breakdown.totalScore < 35) {
+      notes.push('⚠️ Consider reviewing this choice');
+    }
+
+    return notes;
+  }
 }
 
 // =========================================================================
@@ -837,6 +1118,29 @@ export function rankTorrents(
   }
 
   const ranked = algorithm.rankTorrents(torrents, audiobook, options);
+
+  // Add qualityScore field for UI compatibility (rounded score)
+  return ranked.map((r) => ({
+    ...r,
+    qualityScore: Math.round(r.score),
+  }));
+}
+
+/**
+ * Helper function to rank ebook torrents using the singleton instance
+ *
+ * @param torrents - Array of torrent results from Prowlarr
+ * @param ebook - Ebook request details (title, author, preferredFormat)
+ * @param options - Optional ranking configuration
+ * @returns Ranked ebook torrents with quality scores
+ */
+export function rankEbookTorrents(
+  torrents: TorrentResult[],
+  ebook: EbookTorrentRequest,
+  options?: RankEbookTorrentsOptions
+): (RankedEbookTorrent & { qualityScore: number })[] {
+  const algorithm = getRankingAlgorithm();
+  const ranked = algorithm.rankEbookTorrents(torrents, ebook, options || {});
 
   // Add qualityScore field for UI compatibility (rounded score)
   return ranked.map((r) => ({

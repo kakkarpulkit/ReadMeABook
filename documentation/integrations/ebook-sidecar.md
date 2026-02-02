@@ -1,9 +1,9 @@
 # E-book Support
 
-**Status:** ✅ Implemented | First-class ebook requests with multi-source support (Anna's Archive + future Indexer Search)
+**Status:** ✅ Implemented | First-class ebook requests with multi-source support (Anna's Archive + Indexer Search)
 
 ## Overview
-Ebooks are first-class citizens in RMAB, with their own request type, tracking, and UI representation. When an audiobook request completes, an ebook request is automatically created (if a source is enabled). Supports multiple sources: Anna's Archive (direct HTTP) and Indexer Search (via Prowlarr, coming soon).
+Ebooks are first-class citizens in RMAB, with their own request type, tracking, and UI representation. When an audiobook request completes, an ebook request is automatically created (if a source is enabled). Supports multiple sources: Anna's Archive (direct HTTP) and Indexer Search (via Prowlarr with ebook categories).
 
 ## Key Details
 
@@ -14,14 +14,34 @@ Ebooks are first-class citizens in RMAB, with their own request type, tracking, 
 - **UI Badge:** Orange (#f16f19) ebook badge to distinguish from audiobooks
 - **Separate Tracking:** Own progress, status, and error handling
 
+### Source Priority
+1. **Anna's Archive** (if enabled) - Direct HTTP downloads
+   - Searched first via ASIN, then title + author
+   - Uses FlareSolverr if configured (Cloudflare bypass)
+2. **Indexer Search** (if enabled, and no Anna's Archive result)
+   - Searches Prowlarr with ebook categories (default: 7020)
+   - Ranks using unified ranking algorithm with ebook-specific scoring
+   - Downloads via qBittorrent (torrents) or SABnzbd (Usenet)
+3. **Both disabled** → Ebook downloads disabled entirely
+
 ### Flow (Anna's Archive)
 1. Audiobook organization completes
-2. Ebook request created automatically (if Anna's Archive enabled)
+2. Ebook request created automatically (if source enabled)
 3. `search_ebook` job searches Anna's Archive
 4. `start_direct_download` downloads via HTTP
 5. `organize_files` copies to audiobook folder
 6. Request marked as `downloaded` (terminal)
 7. "Available" notification sent
+
+### Flow (Indexer Search)
+1. Audiobook organization completes
+2. Ebook request created automatically (if source enabled)
+3. `search_ebook` job searches indexers (if Anna's Archive failed/disabled)
+4. `download_torrent` job adds to qBittorrent/SABnzbd (reuses audiobook processor)
+5. `monitor_download` tracks progress
+6. `organize_files` copies to audiobook folder
+7. Request marked as `downloaded` (terminal)
+8. Torrent left to seed (respects seeding limits)
 
 ### Configuration
 
@@ -37,7 +57,7 @@ Ebooks are first-class citizens in RMAB, with their own request type, tracking, 
 #### Section 2: Indexer Search
 | Key | Default | Description |
 |-----|---------|-------------|
-| `ebook_indexer_search_enabled` | `false` | Enable Indexer Search (not yet implemented) |
+| `ebook_indexer_search_enabled` | `false` | Enable Indexer Search via Prowlarr |
 
 *Note: Ebook categories are configured per-indexer in Settings → Indexers → Edit Indexer → EBook tab*
 
@@ -45,11 +65,6 @@ Ebooks are first-class citizens in RMAB, with their own request type, tracking, 
 | Key | Default | Options | Description |
 |-----|---------|---------|-------------|
 | `ebook_sidecar_preferred_format` | `epub` | `epub, pdf, mobi, azw3, any` | Preferred format |
-
-### Source Priority
-- If **Anna's Archive** is enabled → Use Anna's Archive (current behavior)
-- If **only Indexer Search** is enabled → Log "not yet implemented", skip gracefully
-- If **both disabled** → Ebook downloads disabled entirely
 
 ## Database Schema
 
@@ -66,25 +81,36 @@ childRequests    Request[] @relation("EbookParent")
 ## Job Processors
 
 ### search_ebook
-- Searches Anna's Archive by ASIN first, then title + author
-- Creates download history record with `downloadClient: 'direct'`
-- Triggers `start_direct_download` job
+- Searches Anna's Archive first (if enabled), then indexers (if enabled)
+- Anna's Archive: Creates download history with `downloadClient: 'direct'`, triggers `start_direct_download`
+- Indexer: Triggers `download_torrent` job (reuses audiobook processor)
 
 ### start_direct_download
 - Downloads file via HTTP with progress tracking
 - Tries multiple slow download links on failure
 - Triggers `organize_files` on success
 
-### monitor_direct_download
-- Future use for async download monitoring
-- Currently, most tracking happens in start_direct_download
+### download_torrent (shared with audiobooks)
+- Routes to qBittorrent (torrents) or SABnzbd (Usenet)
+- Creates download history with indexer metadata
+- Triggers `monitor_download` job
 
-## Ranking Algorithm
+## Ranking Algorithm (Indexer Results)
 
-Ebook ranking (for future multi-source support):
-- **Format Score:** 40 pts (exact match) to 10 pts (different format)
-- **Size Score:** 30 pts (inverse - smaller files preferred)
-- **Source Score:** 30 pts (Anna's Archive gets full score)
+Ebook torrent ranking uses unified algorithm with ebook-specific scoring:
+
+| Component | Points | Description |
+|-----------|--------|-------------|
+| **Title/Author Match** | 60 pts | Reuses audiobook matching logic (word coverage, author presence) |
+| **Format Match** | 10 pts | 10 pts if matches preferred format, 0 otherwise |
+| **Size Quality** | 15 pts | Inverted: < 5MB = 15pts, 5-15MB = 10pts, 15-20MB = 5pts |
+| **Seeder Count** | 15 pts | Logarithmic scaling (same as audiobooks) |
+
+**Filtering:**
+- Files > 20 MB are filtered out (too large for ebooks)
+- Dual threshold: base score >= 50 AND final score >= 50
+
+**Bonus System:** Same as audiobooks (indexer priority, flag bonuses)
 
 ## Delete Behavior
 
@@ -94,6 +120,7 @@ Ebook ranking (for future multi-source support):
 - Does NOT delete from backend library (Plex/ABS)
 - Does NOT clear audiobook availability linkage
 - Soft-deletes the ebook request record
+- Torrents left to seed (respects seeding limits)
 
 ## UI Representation
 
@@ -124,7 +151,7 @@ Configure URL in Admin Settings → E-book Sidecar: `http://localhost:8191`
 - Subsequent: ~2-5 seconds per page
 - Total: ~15-30 seconds per ebook
 
-## Scraping Strategy
+## Scraping Strategy (Anna's Archive)
 
 ### Method 1: ASIN Search (exact match)
 ```
@@ -161,17 +188,19 @@ Search: https://annas-archive.li/search?q=Title+Author&ext=epub&lang=en
 ## Technical Files
 
 **Processors:**
-- `src/lib/processors/search-ebook.processor.ts`
-- `src/lib/processors/direct-download.processor.ts`
+- `src/lib/processors/search-ebook.processor.ts` - Multi-source search
+- `src/lib/processors/direct-download.processor.ts` - Anna's Archive downloads
+- `src/lib/processors/download-torrent.processor.ts` - Indexer downloads (shared)
 - `src/lib/processors/organize-files.processor.ts` (ebook branch)
 
 **Services:**
-- `src/lib/services/ebook-scraper.ts`
+- `src/lib/services/ebook-scraper.ts` - Anna's Archive scraping
 - `src/lib/services/job-queue.service.ts` (ebook job types)
 
 **Utils:**
 - `src/lib/utils/file-organizer.ts` (`organizeEbook` method)
-- `src/lib/utils/ranking-algorithm.ts` (`rankEbooks` function)
+- `src/lib/utils/ranking-algorithm.ts` (`rankEbookTorrents` function)
+- `src/lib/utils/indexer-grouping.ts` (supports `'ebook'` type)
 
 **UI:**
 - `src/components/requests/RequestCard.tsx` (ebook badge)
@@ -183,17 +212,10 @@ Search: https://annas-archive.li/search?q=Title+Author&ext=epub&lang=en
 
 | Format | Extension | Recommended |
 |--------|-----------|-------------|
-| EPUB | `.epub` | ✅ Yes |
-| PDF | `.pdf` | ⚠️ Sometimes |
-| MOBI | `.mobi` | ⚠️ Legacy |
-| AZW3 | `.azw3` | ⚠️ Sometimes |
-
-## Limitations
-
-1. Indexer Search not yet implemented (settings ready, search stubbed)
-2. Title search may return wrong book for common titles
-3. Download speed depends on file server load
-4. English books only (title search filter)
+| EPUB | `.epub` | Yes |
+| PDF | `.pdf` | Sometimes |
+| MOBI | `.mobi` | Legacy |
+| AZW3 | `.azw3` | Sometimes |
 
 ## Indexer Categories
 
@@ -203,8 +225,16 @@ Indexer configuration supports separate category arrays for audiobooks and ebook
 
 Categories are configured per-indexer via the tabbed interface in the Edit Indexer modal.
 
+## Limitations
+
+1. Title search may return wrong book for common titles
+2. Download speed depends on file server load (Anna's Archive)
+3. English books only (title search filter for Anna's Archive)
+4. Format detection from torrent titles may be imprecise
+
 ## Related
 - [File Organization](../phase3/file-organization.md) - Ebook organization
 - [Settings Pages](../settings-pages.md) - Configuration UI
 - [Ranking Algorithm](../phase3/ranking-algorithm.md) - Ebook ranking
 - [Request Deletion](../admin-features/request-deletion.md) - Delete behavior
+- [Prowlarr Integration](../phase3/prowlarr.md) - Indexer search

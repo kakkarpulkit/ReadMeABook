@@ -85,7 +85,7 @@ src/app/admin/settings/
    - FlareSolverr URL (optional, for Cloudflare bypass)
 
 2. **Indexer Search Section**
-   - Enable toggle for indexer-based ebook search (not yet implemented)
+   - Enable toggle for indexer-based ebook search via Prowlarr
    - Hint directing users to Indexers tab for category configuration
 
 3. **General Settings Section** (visible when any source enabled)
@@ -95,14 +95,14 @@ src/app/admin/settings/
 | Key | Default | Description |
 |-----|---------|-------------|
 | `ebook_annas_archive_enabled` | `false` | Enable Anna's Archive |
-| `ebook_indexer_search_enabled` | `false` | Enable Indexer Search (stubbed) |
+| `ebook_indexer_search_enabled` | `false` | Enable Indexer Search via Prowlarr |
 | `ebook_sidecar_preferred_format` | `epub` | Preferred format |
 | `ebook_sidecar_base_url` | `https://annas-archive.li` | Anna's Archive mirror |
 | `ebook_sidecar_flaresolverr_url` | `` | FlareSolverr URL |
 
 **Behavior:**
-- If Anna's Archive enabled → Downloads work (current implementation)
-- If only Indexer Search enabled → Gracefully logs "not yet implemented"
+- If Anna's Archive enabled → Searches Anna's Archive first
+- If Indexer Search enabled → Falls back to indexer search if Anna's Archive fails/disabled
 - If both disabled → Ebook downloads completely off
 
 ## Indexer Categories (Tabbed)

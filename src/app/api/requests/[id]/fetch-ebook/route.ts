@@ -42,14 +42,6 @@ export async function POST(
           );
         }
 
-        // If only indexer search is enabled (not yet implemented), return error
-        if (!isAnnasArchiveEnabled && isIndexerSearchEnabled) {
-          return NextResponse.json(
-            { error: 'E-book indexer search is not yet implemented. Enable Anna\'s Archive to fetch e-books.' },
-            { status: 400 }
-          );
-        }
-
         // Get the parent request with audiobook data
         const parentRequest = await prisma.request.findUnique({
           where: { id: parentRequestId },

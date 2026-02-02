@@ -195,16 +195,6 @@ export function EbookTab({ ebook, onChange, onSuccess, onError, markAsSaved }: E
               </p>
             </div>
           )}
-
-          {/* Coming soon notice */}
-          {ebook.indexerSearchEnabled && (
-            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
-              <p className="text-sm text-purple-800 dark:text-purple-200">
-                <strong>Coming Soon:</strong> Indexer search for e-books is not yet implemented.
-                Enabling this setting prepares your configuration for when the feature is released.
-              </p>
-            </div>
-          )}
         </div>
       </div>
 

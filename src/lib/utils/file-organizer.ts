@@ -645,12 +645,14 @@ export class FileOrganizer {
   /**
    * Organize ebook file into proper directory structure
    * Simplified compared to audiobooks - no metadata tagging, cover art, or chapter merging
+   * Supports both direct file paths (Anna's Archive) and directories (indexer downloads)
    */
   async organizeEbook(
     downloadPath: string,
-    metadata: { title: string; author: string; asin?: string; year?: number },
+    metadata: { title: string; author: string; narrator?: string; asin?: string; year?: number; series?: string; seriesPart?: string },
     template: string,
-    loggerConfig?: LoggerConfig
+    loggerConfig?: LoggerConfig,
+    isIndexerDownload: boolean = false
   ): Promise<EbookOrganizationResult> {
     const logger = loggerConfig ? RMABLogger.forJob(loggerConfig.jobId, loggerConfig.context) : null;
 
@@ -663,19 +665,21 @@ export class FileOrganizer {
     try {
       await logger?.info(`Organizing ebook: ${downloadPath}`);
 
-      // Get file info
-      const stats = await fs.stat(downloadPath);
-      if (!stats.isFile()) {
-        throw new Error('Ebook download path must be a file');
+      const ebookFormats = ['epub', 'pdf', 'mobi', 'azw', 'azw3', 'fb2', 'cbz', 'cbr'];
+
+      // Find ebook file (handle both file and directory cases)
+      const { ebookFile, baseSourcePath, isFile } = await this.findEbookFile(downloadPath, ebookFormats);
+
+      if (!ebookFile) {
+        throw new Error(`No ebook files found in download (looking for: ${ebookFormats.join(', ')})`);
       }
+
+      // Build full path to source file
+      const sourceFilePath = isFile ? downloadPath : path.join(baseSourcePath, ebookFile);
+      await logger?.info(`Found ebook file: ${ebookFile}`);
 
       // Detect format from extension
-      const ext = path.extname(downloadPath).toLowerCase().slice(1);
-      const ebookFormats = ['epub', 'pdf', 'mobi', 'azw', 'azw3', 'fb2', 'cbz', 'cbr'];
-      if (!ebookFormats.includes(ext)) {
-        throw new Error(`Unsupported ebook format: ${ext}`);
-      }
-
+      const ext = path.extname(ebookFile).toLowerCase().slice(1);
       result.format = ext;
       await logger?.info(`Detected ebook format: ${ext}`);
 
@@ -685,9 +689,11 @@ export class FileOrganizer {
         template,
         metadata.author,
         metadata.title,
-        undefined, // narrator
+        metadata.narrator,
         metadata.asin,
-        metadata.year
+        metadata.year,
+        metadata.series,
+        metadata.seriesPart
       );
 
       await logger?.info(`Target directory: ${targetDir}`);
@@ -696,7 +702,7 @@ export class FileOrganizer {
       await fs.mkdir(targetDir, { recursive: true });
 
       // Build target filename (sanitize source filename)
-      const sourceFilename = path.basename(downloadPath);
+      const sourceFilename = path.basename(ebookFile);
       const targetFilename = this.sanitizePath(sourceFilename);
       const targetPath = path.join(targetDir, targetFilename);
 
@@ -711,18 +717,22 @@ export class FileOrganizer {
         // File doesn't exist, continue with copy
       }
 
-      // Copy ebook file (don't delete original in case of direct download retry)
-      await fs.copyFile(downloadPath, targetPath);
+      // Copy ebook file (do NOT delete original - may need for seeding or retry)
+      await fs.copyFile(sourceFilePath, targetPath);
       await fs.chmod(targetPath, 0o644);
 
       await logger?.info(`Copied ebook: ${targetFilename}`);
 
-      // Clean up source file (for direct HTTP downloads, we don't need to keep the original)
-      try {
-        await fs.unlink(downloadPath);
-        await logger?.info(`Cleaned up source file: ${sourceFilename}`);
-      } catch {
-        // Ignore cleanup errors
+      // Clean up source file ONLY for direct HTTP downloads (not indexer downloads which need to seed)
+      if (!isIndexerDownload && isFile) {
+        try {
+          await fs.unlink(sourceFilePath);
+          await logger?.info(`Cleaned up source file: ${sourceFilename}`);
+        } catch {
+          // Ignore cleanup errors
+        }
+      } else if (isIndexerDownload) {
+        await logger?.info(`Keeping source file for seeding: ${sourceFilename}`);
       }
 
       result.success = true;
@@ -736,6 +746,60 @@ export class FileOrganizer {
       result.errors.push(error instanceof Error ? error.message : 'Unknown error');
       return result;
     }
+  }
+
+  /**
+   * Find ebook file in download path (handles both single file and directory)
+   */
+  private async findEbookFile(
+    downloadPath: string,
+    ebookFormats: string[]
+  ): Promise<{ ebookFile: string | null; baseSourcePath: string; isFile: boolean }> {
+    let ebookFile: string | null = null;
+    let isFile = false;
+
+    try {
+      const stats = await fs.stat(downloadPath);
+
+      if (stats.isFile()) {
+        // Handle single file case
+        isFile = true;
+        const ext = path.extname(downloadPath).toLowerCase().slice(1);
+
+        if (ebookFormats.includes(ext)) {
+          ebookFile = path.basename(downloadPath);
+        }
+      } else {
+        // Handle directory case - find ebook files inside
+        const files = await this.walkDirectory(downloadPath);
+
+        // Filter to ebook files and sort by preference (epub > pdf > others)
+        const ebookFiles = files.filter(file => {
+          const ext = path.extname(file).toLowerCase().slice(1);
+          return ebookFormats.includes(ext);
+        });
+
+        if (ebookFiles.length > 0) {
+          // Sort by format preference
+          ebookFiles.sort((a, b) => {
+            const extA = path.extname(a).toLowerCase().slice(1);
+            const extB = path.extname(b).toLowerCase().slice(1);
+            const priorityOrder = ['epub', 'pdf', 'mobi', 'azw3', 'azw', 'fb2', 'cbz', 'cbr'];
+            return priorityOrder.indexOf(extA) - priorityOrder.indexOf(extB);
+          });
+
+          ebookFile = ebookFiles[0];
+        }
+      }
+    } catch {
+      // Path doesn't exist or inaccessible
+    }
+
+    return {
+      ebookFile,
+      baseSourcePath: downloadPath,
+      isFile,
+    };
   }
 }
 

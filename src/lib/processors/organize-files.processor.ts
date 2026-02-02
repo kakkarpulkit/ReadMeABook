@@ -67,36 +67,53 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
 
     logger.info(`Organizing: ${audiobook.title} by ${audiobook.author}`);
 
-    // Fetch year from multiple sources (priority order)
+    // Fetch missing metadata from AudibleCache if needed
+    // Year and narrator can both be part of path templates
     let year = audiobook.year || undefined;
-    logger.info(`Initial year from audiobook record: ${year || 'null'}`);
+    let narrator = audiobook.narrator || undefined;
 
-    if (!year && audiobook.audibleAsin) {
-      logger.info(`No year in audiobook record, attempting to fetch from AudibleCache for ASIN: ${audiobook.audibleAsin}`);
+    logger.info(`Initial metadata from audiobook record: year=${year || 'null'}, narrator=${narrator || 'null'}`);
 
-      // Try AudibleCache (for popular/new releases)
+    // Try to enrich missing metadata from AudibleCache
+    if (audiobook.audibleAsin && (!year || !narrator)) {
+      logger.info(`Missing metadata, attempting to fetch from AudibleCache for ASIN: ${audiobook.audibleAsin}`);
+
       const audibleCache = await prisma.audibleCache.findUnique({
         where: { asin: audiobook.audibleAsin },
-        select: { releaseDate: true },
+        select: { releaseDate: true, narrator: true },
       });
 
-      if (audibleCache?.releaseDate) {
-        logger.info(`Found AudibleCache entry with releaseDate: ${audibleCache.releaseDate}`);
-        year = new Date(audibleCache.releaseDate).getFullYear();
-        logger.info(`Extracted year ${year} from AudibleCache releaseDate`);
+      if (audibleCache) {
+        const updates: { year?: number; narrator?: string } = {};
 
-        // Update audiobook record with year for future use
-        await prisma.audiobook.update({
-          where: { id: audiobookId },
-          data: { year },
-        });
-        logger.info(`Updated audiobook record with year ${year}`);
+        // Extract year from releaseDate if missing
+        if (!year && audibleCache.releaseDate) {
+          year = new Date(audibleCache.releaseDate).getFullYear();
+          updates.year = year;
+          logger.info(`Extracted year ${year} from AudibleCache releaseDate`);
+        }
+
+        // Get narrator if missing
+        if (!narrator && audibleCache.narrator) {
+          narrator = audibleCache.narrator;
+          updates.narrator = narrator;
+          logger.info(`Got narrator "${narrator}" from AudibleCache`);
+        }
+
+        // Update audiobook record with enriched data for future use
+        if (Object.keys(updates).length > 0) {
+          await prisma.audiobook.update({
+            where: { id: audiobookId },
+            data: updates,
+          });
+          logger.info(`Updated audiobook record with enriched metadata`);
+        }
       } else {
-        logger.info(`No year found in AudibleCache for ASIN ${audiobook.audibleAsin}`);
+        logger.info(`No AudibleCache entry found for ASIN ${audiobook.audibleAsin}`);
       }
     }
 
-    logger.info(`Final year value for path organization: ${year || 'null (year will be omitted from path)'}`)
+    logger.info(`Final metadata for path organization: year=${year || 'null'}, narrator=${narrator || 'null'}`)
 
     // Get file organizer (reads media_dir from database config)
     const organizer = await getFileOrganizer();
@@ -113,7 +130,7 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
       {
         title: audiobook.title,
         author: audiobook.author,
-        narrator: audiobook.narrator || undefined,
+        narrator,
         coverArtUrl: audiobook.coverArtUrl || undefined,
         asin: audiobook.audibleAsin || undefined,
         year,
@@ -329,8 +346,10 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
     const errorMessage = error instanceof Error ? error.message : 'File organization failed';
 
     // Check if this is a retryable error (transient filesystem issues or no files found)
+    // These errors may resolve on retry (e.g., files still being extracted, permissions being set)
     const isRetryableError =
       errorMessage.includes('No audiobook files found') ||
+      errorMessage.includes('No ebook files found') ||  // Ebook equivalent of above
       errorMessage.includes('ENOENT') || // File/directory not found
       errorMessage.includes('no such file or directory') ||
       errorMessage.includes('EACCES') || // Permission denied (might be temporary)
@@ -501,6 +520,64 @@ async function processEbookOrganization(
 
   logger.info(`Organizing ebook: ${book.title} by ${book.author}`);
 
+  // Fetch missing metadata from AudibleCache (same pattern as audiobooks)
+  // Year, narrator, series, seriesPart can all be part of path templates
+  let year = book.year || undefined;
+  let narrator = book.narrator || undefined;
+  let series = book.series || undefined;
+  let seriesPart = book.seriesPart || undefined;
+
+  logger.info(`Initial metadata from book record: year=${year || 'null'}, narrator=${narrator || 'null'}, series=${series || 'null'}`);
+
+  // Try to enrich missing metadata from AudibleCache
+  if (book.audibleAsin && (!year || !narrator)) {
+    logger.info(`Missing metadata, attempting to fetch from AudibleCache for ASIN: ${book.audibleAsin}`);
+
+    const audibleCache = await prisma.audibleCache.findUnique({
+      where: { asin: book.audibleAsin },
+      select: { releaseDate: true, narrator: true, },
+    });
+
+    if (audibleCache) {
+      const updates: { year?: number; narrator?: string } = {};
+
+      // Extract year from releaseDate if missing
+      if (!year && audibleCache.releaseDate) {
+        year = new Date(audibleCache.releaseDate).getFullYear();
+        updates.year = year;
+        logger.info(`Extracted year ${year} from AudibleCache releaseDate`);
+      }
+
+      // Get narrator if missing
+      if (!narrator && audibleCache.narrator) {
+        narrator = audibleCache.narrator;
+        updates.narrator = narrator;
+        logger.info(`Got narrator "${narrator}" from AudibleCache`);
+      }
+
+      // Update book record with enriched data for future use
+      if (Object.keys(updates).length > 0) {
+        await prisma.audiobook.update({
+          where: { id: audiobookId },
+          data: updates,
+        });
+        logger.info(`Updated book record with enriched metadata`);
+      }
+    } else {
+      logger.info(`No AudibleCache entry found for ASIN ${book.audibleAsin}`);
+    }
+  }
+
+  logger.info(`Final metadata for path organization: year=${year || 'null'}, narrator=${narrator || 'null'}, series=${series || 'null'}, seriesPart=${seriesPart || 'null'}`);
+
+  // Check if this is an indexer download (needs to keep source for seeding)
+  const downloadHistory = await prisma.downloadHistory.findFirst({
+    where: { requestId },
+    orderBy: { createdAt: 'desc' },
+  });
+  const isIndexerDownload = downloadHistory?.downloadClient !== 'direct';
+  logger.info(`Download source: ${downloadHistory?.downloadClient || 'unknown'} (indexer download: ${isIndexerDownload})`);
+
   // Get file organizer and template
   const organizer = await getFileOrganizer();
   const templateConfig = await prisma.configuration.findUnique({
@@ -509,16 +586,21 @@ async function processEbookOrganization(
   const template = templateConfig?.value || '{author}/{title} {asin}';
 
   // Organize ebook files (organizer will detect ebook type and skip audio-specific processing)
+  // Pass all metadata that could be used in path templates (same as audiobooks)
   const result = await organizer.organizeEbook(
     downloadPath,
     {
       title: book.title,
       author: book.author,
+      narrator,
       asin: book.audibleAsin || undefined,
-      year: book.year || undefined,
+      year,
+      series,
+      seriesPart,
     },
     template,
-    jobId ? { jobId, context: 'FileOrganizer.Ebook' } : undefined
+    jobId ? { jobId, context: 'FileOrganizer.Ebook' } : undefined,
+    isIndexerDownload
   );
 
   if (!result.success) {
@@ -595,6 +677,88 @@ async function processEbookOrganization(
     logger.debug(`Ebook library scan disabled (scanEnabled=${scanEnabled})`);
   }
 
+  // Cleanup Usenet downloads if configured (same logic as audiobooks)
+  try {
+    logger.info('Checking if cleanup is needed for ebook download');
+
+    // downloadHistory was already fetched earlier in this function
+    logger.info(`Download history found: ${downloadHistory ? 'yes' : 'no'}`, {
+      hasNzbId: !!downloadHistory?.nzbId,
+      hasIndexerId: !!downloadHistory?.indexerId,
+      nzbId: downloadHistory?.nzbId || 'none',
+      indexerId: downloadHistory?.indexerId || 'none',
+    });
+
+    if (downloadHistory?.nzbId && downloadHistory?.indexerId) {
+      // Get indexer configuration
+      const indexersConfig = await configService.get('prowlarr_indexers');
+      logger.info(`Indexers config found: ${indexersConfig ? 'yes' : 'no'}`);
+
+      if (indexersConfig) {
+        const indexers: Array<{ id: number; protocol: string; removeAfterProcessing?: boolean }> = JSON.parse(indexersConfig);
+        const indexer = indexers.find(idx => idx.id === downloadHistory.indexerId);
+
+        logger.info(`Indexer found in config: ${indexer ? 'yes' : 'no'}`, {
+          indexerId: downloadHistory.indexerId,
+          protocol: indexer?.protocol || 'none',
+          removeAfterProcessing: indexer?.removeAfterProcessing ?? 'undefined',
+        });
+
+        // Check if this is a Usenet indexer with cleanup enabled
+        if (indexer && indexer.protocol?.toLowerCase() !== 'torrent' && indexer.removeAfterProcessing) {
+          logger.info(`Cleaning up NZB ${downloadHistory.nzbId} (cleanup enabled for indexer ${indexer.id})`);
+
+          // First, manually delete files from filesystem
+          if (downloadPath) {
+            logger.info(`Removing download files from filesystem: ${downloadPath}`);
+
+            const fs = await import('fs/promises');
+
+            try {
+              // Check if it's a file or directory
+              const stats = await fs.stat(downloadPath);
+
+              if (stats.isDirectory()) {
+                // Remove directory and all contents
+                await fs.rm(downloadPath, { recursive: true, force: true });
+                logger.info(`Removed directory: ${downloadPath}`);
+              } else {
+                // Remove single file
+                await fs.unlink(downloadPath);
+                logger.info(`Removed file: ${downloadPath}`);
+              }
+            } catch (fsError) {
+              // File/directory might already be deleted or not exist
+              if ((fsError as NodeJS.ErrnoException).code === 'ENOENT') {
+                logger.info(`Download path already deleted: ${downloadPath}`);
+              } else {
+                throw fsError;
+              }
+            }
+          } else {
+            logger.warn(`No download path available, skipping filesystem deletion`);
+          }
+
+          // Then archive from SABnzbd history (hides from UI but preserves for troubleshooting)
+          const { getSABnzbdService } = await import('../integrations/sabnzbd.service');
+          const sabnzbd = await getSABnzbdService();
+
+          await sabnzbd.archiveCompletedNZB(downloadHistory.nzbId);
+
+          logger.info(`Successfully archived NZB ${downloadHistory.nzbId} and removed files`);
+        }
+      }
+    }
+  } catch (error) {
+    // Log error but don't fail the job - cleanup is optional
+    logger.warn(
+      `Failed to cleanup NZB download: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      {
+        error: error instanceof Error ? error.stack : undefined,
+      }
+    );
+  }
+
   return {
     success: true,
     message: 'Ebook organized successfully',
@@ -638,13 +802,7 @@ async function createEbookRequestIfEnabled(
       return;
     }
 
-    // If only indexer search is enabled (not yet implemented), log and skip
-    if (!isAnnasArchiveEnabled && isIndexerSearchEnabled) {
-      logger.info('Ebook indexer search is enabled but not yet implemented, skipping ebook request creation');
-      return;
-    }
-
-    // Anna's Archive is enabled - proceed with ebook request creation
+    // At least one source is enabled - proceed with ebook request creation
 
     // Check if an ebook request already exists for this parent
     const existingEbookRequest = await prisma.request.findFirst({
