@@ -341,42 +341,62 @@ export async function deleteRequest(
           }
         }
 
-        // Delete ALL plex_library records matching this audiobook's title and author
-        // This handles cases where there might be duplicate library records
-        // and ensures the book doesn't show as "In Your Library" during searches
+        // Delete plex_library records to ensure book shows as NOT available
+        // Uses ASIN-based matching (same as availability check) for consistency
         try {
-          // Find all matching library records (by title/author fuzzy match)
-          const matchingLibraryRecords = await prisma.plexLibrary.findMany({
-            where: {
-              title: {
-                contains: request.audiobook.title.substring(0, 20),
-                mode: 'insensitive',
+          let deletedCount = 0;
+
+          // Primary method: Delete by ASIN (matches availability check logic exactly)
+          // This ensures the same record found during availability check gets deleted
+          if (request.audiobook.audibleAsin) {
+            const asinDeleteResult = await prisma.plexLibrary.deleteMany({
+              where: {
+                OR: [
+                  { asin: request.audiobook.audibleAsin },
+                  { plexGuid: { contains: request.audiobook.audibleAsin } },
+                ],
               },
-            },
-          });
+            });
+            deletedCount = asinDeleteResult.count;
 
-          // Filter to exact matches (case-insensitive title and author)
-          const exactMatches = matchingLibraryRecords.filter((record) => {
-            const titleMatch = record.title.toLowerCase() === request.audiobook.title.toLowerCase();
-            const authorMatch = record.author.toLowerCase() === request.audiobook.author.toLowerCase();
-            return titleMatch && authorMatch;
-          });
+            if (deletedCount > 0) {
+              logger.info(
+                `Deleted ${deletedCount} plex_library record(s) by ASIN "${request.audiobook.audibleAsin}" for "${request.audiobook.title}"`
+              );
+            }
+          }
 
-          if (exactMatches.length > 0) {
-            // Delete all exact matches
-            const deletePromises = exactMatches.map((record) =>
-              prisma.plexLibrary.delete({ where: { id: record.id } })
-            );
+          // Fallback: Delete by exact title/author match (for legacy records without ASIN)
+          // Only used if ASIN deletion didn't find any records
+          if (deletedCount === 0) {
+            const matchingLibraryRecords = await prisma.plexLibrary.findMany({
+              where: {
+                title: {
+                  equals: request.audiobook.title,
+                  mode: 'insensitive',
+                },
+                author: {
+                  equals: request.audiobook.author,
+                  mode: 'insensitive',
+                },
+              },
+            });
 
-            await Promise.all(deletePromises);
+            if (matchingLibraryRecords.length > 0) {
+              const deletePromises = matchingLibraryRecords.map((record) =>
+                prisma.plexLibrary.delete({ where: { id: record.id } })
+              );
+              await Promise.all(deletePromises);
+              deletedCount = matchingLibraryRecords.length;
 
-            logger.info(
-              `Deleted ${exactMatches.length} plex_library record(s) for "${request.audiobook.title}"`
-            );
-          } else {
-            logger.info(
-              `No plex_library records found for "${request.audiobook.title}"`
-            );
+              logger.info(
+                `Deleted ${deletedCount} plex_library record(s) by title/author for "${request.audiobook.title}"`
+              );
+            } else {
+              logger.info(
+                `No plex_library records found for "${request.audiobook.title}" (ASIN: ${request.audiobook.audibleAsin || 'none'})`
+              );
+            }
           }
         } catch (libError) {
           logger.error(

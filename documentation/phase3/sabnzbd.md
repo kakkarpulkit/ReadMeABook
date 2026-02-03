@@ -65,9 +65,18 @@ Service uses singleton pattern. When settings change, singleton invalidated to f
 **Category:** `readmeabook` (auto-created for all downloads)
 
 **Save Path Synchronization:**
-- Category created on first download if not exists
-- Category path set to `download_dir` config value
-- Unlike qBittorrent, SABnzbd categories are less frequently updated (set once at creation)
+- Category created/updated on every download (matches qBittorrent behavior)
+- Fetches SABnzbd's `complete_dir` setting via API to understand download location
+- Applies remote path mapping to translate RMAB's `download_dir` to SABnzbd's perspective
+- Calculates optimal category path (relative, absolute, or root)
+
+**Smart Path Calculation:**
+1. Get SABnzbd's `complete_dir` from `misc.complete_dir` config
+2. Apply `PathMapper.reverseTransform()` to RMAB's `download_dir`
+3. Compare transformed path to `complete_dir`:
+   - **Match:** Use empty string (downloads go to complete_dir root)
+   - **Subdirectory:** Use relative path (e.g., `audiobooks`)
+   - **Different:** Use absolute path (e.g., `/mnt/media/audiobooks`)
 
 ## Post-Processing
 
@@ -121,6 +130,12 @@ interface HistoryItem {
   completedTimestamp: string; // Unix timestamp
   downloadTime: string; // Seconds
 }
+
+interface SABnzbdConfig {
+  version: string;
+  completeDir: string; // SABnzbd's configured complete download folder
+  categories: Array<{ name: string; dir: string }>;
+}
 ```
 
 ## NZB ID vs Torrent Hash
@@ -168,11 +183,40 @@ interface HistoryItem {
 **Use Case:** SABnzbd runs on different machine/container with different filesystem perspective.
 
 **Example Scenario:**
-- SABnzbd reports: `/remote/usenet/complete/Audiobook.Name`
-- ReadMeABook needs: `/downloads/Audiobook.Name`
-- Mapping: Remote `/remote/usenet/complete` → Local `/downloads`
+- SABnzbd sees: `/mnt/usenet/complete`
+- ReadMeABook sees: `/downloads`
+- Mapping: Remote `/mnt/usenet/complete` ↔ Local `/downloads`
 
-**Implementation:** Same as qBittorrent (uses `PathMapper` utility)
+**Bidirectional Path Mapping:**
+
+**1. Outgoing (RMAB → SABnzbd):** When setting category path
+- RMAB's download path: `/downloads`
+- Translated to SABnzbd's path: `/mnt/usenet/complete`
+- Applied in `sabnzbd.service.ts` via `PathMapper.reverseTransform()`
+- Combined with `complete_dir` detection for optimal category configuration
+
+**2. Incoming (SABnzbd → RMAB):** When processing completed downloads
+- SABnzbd reports: `/mnt/usenet/complete/Audiobook.Name`
+- Translated to RMAB's path: `/downloads/Audiobook.Name`
+- Applied in `monitor-download.processor.ts` via `PathMapper.transform()`
+- Ensures RMAB can find and organize files
+
+**Path Transformation Examples:**
+```typescript
+// Outgoing: RMAB → SABnzbd (when setting category)
+localPath = "/downloads"
+config = { remotePath: "/mnt/usenet/complete", localPath: "/downloads" }
+remotePath = PathMapper.reverseTransform(localPath, config)
+// Result: "/mnt/usenet/complete"
+
+// Incoming: SABnzbd → RMAB (when processing completion)
+sabPath = "/mnt/usenet/complete/Audiobook.Name"
+config = { remotePath: "/mnt/usenet/complete", localPath: "/downloads" }
+organizePath = PathMapper.transform(sabPath, config)
+// Result: "/downloads/Audiobook.Name"
+```
+
+**Implementation:** Uses `PathMapper` utility (same as qBittorrent)
 
 ## Fixed Issues ✅
 
@@ -181,6 +225,16 @@ interface HistoryItem {
 **3. Post-Processing Tracking** - Monitors extracting/repairing states
 **4. Queue vs History Logic** - Checks queue first, falls back to history
 **5. SSL Certificate Errors** - Optional SSL verification disable for self-signed certs
+**6. Category path not synced with complete_dir** - SABnzbd downloads to its own `complete_dir`, not RMAB's path. Fixed by:
+   - Fetching SABnzbd's `complete_dir` from config API (`misc.complete_dir`)
+   - Calculating relative or absolute category path based on path comparison
+   - Applying remote path mapping before comparison
+   - Syncing category path on every download (same as qBittorrent)
+**7. Remote path mapping not applied** - Paths weren't translated between RMAB and SABnzbd perspectives. Fixed by:
+   - Adding `PathMappingConfig` to SABnzbd service constructor
+   - Applying `reverseTransform()` when setting category path (outgoing)
+   - Applying `transform()` when processing completed downloads (incoming)
+   - Using same `PathMapper` utility as qBittorrent for consistency
 
 ## Automatic Cleanup
 
@@ -223,9 +277,11 @@ interface HistoryItem {
 | ID Format | NZB ID (immediate) | Torrent hash (extracted) |
 | Post-Processing | Automatic (par2, extraction) | None (manual) |
 | Seeding | N/A (Usenet is not P2P) | Required (tracker) |
-| Categories | Path-based | Path + tag-based |
+| Categories | Path-based (relative to complete_dir) | Path + tag-based |
 | File Handling | Auto-extracts archives | Downloads as-is |
 | Cleanup | Automatic (optional, per-indexer) | Seeding time based |
+| Path Mapping | ✅ Bidirectional (same as qBit) | ✅ Bidirectional |
+| Category Sync | ✅ Every download | ✅ Every download |
 
 ## Tech Stack
 

@@ -196,11 +196,21 @@ export class DownloadClientManager {
    * Create SABnzbd service instance
    */
   private createSABnzbdService(config: DownloadClientConfig): SABnzbdService {
+    const pathMapping: PathMappingConfig | undefined = config.remotePathMappingEnabled && config.remotePath && config.localPath
+      ? {
+          enabled: true,
+          remotePath: config.remotePath,
+          localPath: config.localPath,
+        }
+      : undefined;
+
     return new SABnzbdService(
       config.url,
       config.password, // API key stored in password field
       config.category || 'readmeabook', // defaultCategory
-      config.disableSSLVerify
+      '/downloads', // defaultDownloadDir (will be overridden by singleton with actual config)
+      config.disableSSLVerify,
+      pathMapping
     );
   }
 

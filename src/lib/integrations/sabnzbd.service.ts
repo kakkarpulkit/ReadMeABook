@@ -6,6 +6,7 @@
 import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 import { RMABLogger } from '@/lib/utils/logger';
+import { PathMapper, PathMappingConfig } from '@/lib/utils/path-mapper';
 
 const logger = RMABLogger.create('SABnzbd');
 
@@ -68,6 +69,7 @@ export interface SABnzbdConfig {
     name: string;
     dir: string;
   }>;
+  completeDir: string; // SABnzbd's configured complete download folder
 }
 
 export interface DownloadProgress {
@@ -84,19 +86,25 @@ export class SABnzbdService {
   private baseUrl: string;
   private apiKey: string;
   private defaultCategory: string;
+  private defaultDownloadDir: string;
   private disableSSLVerify: boolean;
   private httpsAgent?: https.Agent;
+  private pathMappingConfig: PathMappingConfig;
 
   constructor(
     baseUrl: string,
     apiKey: string,
     defaultCategory: string = 'readmeabook',
-    disableSSLVerify: boolean = false
+    defaultDownloadDir: string = '/downloads',
+    disableSSLVerify: boolean = false,
+    pathMappingConfig?: PathMappingConfig
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.apiKey = apiKey?.trim() || '';
     this.defaultCategory = defaultCategory;
+    this.defaultDownloadDir = defaultDownloadDir;
     this.disableSSLVerify = disableSSLVerify;
+    this.pathMappingConfig = pathMappingConfig || { enabled: false, remotePath: '', localPath: '' };
 
     // Configure HTTPS agent if SSL verification is disabled
     if (this.disableSSLVerify && this.baseUrl.startsWith('https')) {
@@ -206,7 +214,11 @@ export class SABnzbdService {
   }
 
   /**
-   * Get SABnzbd configuration
+   * Get SABnzbd configuration including complete download folder
+   *
+   * SABnzbd config structure:
+   * - misc.complete_dir: The base folder where completed downloads are stored
+   * - categories: Object mapping category names to their settings (dir is relative to complete_dir)
    */
   async getConfig(): Promise<SABnzbdConfig> {
     const response = await this.client.get('/api', {
@@ -222,8 +234,23 @@ export class SABnzbdService {
       throw new Error('Failed to get SABnzbd configuration');
     }
 
+    // Extract complete_dir from misc section
+    // This is where SABnzbd stores completed downloads before category subdirectories are applied
+    const completeDir = config.misc?.complete_dir || '';
+
+    logger.debug('SABnzbd config retrieved from API', {
+      completeDir: completeDir || '(not configured)',
+      downloadDir: config.misc?.download_dir || '(not set)',
+      categoryCount: Object.keys(config.categories || {}).length,
+      categories: Object.entries(config.categories || {}).map(([name, details]: [string, any]) => ({
+        name,
+        dir: details.dir || '(root)',
+      })),
+    });
+
     return {
       version: config.version || '',
+      completeDir,
       categories: Object.entries(config.categories || {}).map(([name, details]: [string, any]) => ({
         name,
         dir: details.dir || '',
@@ -232,36 +259,190 @@ export class SABnzbdService {
   }
 
   /**
-   * Ensure the default category exists
-   * Creates category if it doesn't exist
+   * Get SABnzbd's complete download folder
+   * This is the base directory where SABnzbd stores completed downloads
    */
-  async ensureCategory(downloadPath?: string): Promise<void> {
+  async getCompleteDir(): Promise<string> {
+    const config = await this.getConfig();
+    return config.completeDir;
+  }
+
+  /**
+   * Calculate the correct category path for SABnzbd
+   *
+   * SABnzbd categories use paths relative to complete_dir by default, but can also
+   * accept absolute paths. This method calculates the correct path based on:
+   * 1. SABnzbd's complete_dir setting
+   * 2. RMAB's desired download path
+   * 3. Remote path mapping (if enabled)
+   *
+   * @returns The path to set for the category (relative, absolute, or empty string)
+   */
+  private calculateCategoryPath(completeDir: string, desiredPath: string): string {
+    // Normalize paths for comparison (convert backslashes, remove trailing slashes)
+    const normalizeForCompare = (p: string): string => {
+      return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    };
+
+    const normalizedComplete = normalizeForCompare(completeDir);
+    const normalizedDesired = normalizeForCompare(desiredPath);
+
+    logger.debug('Path comparison (normalized)', {
+      completeDir: { original: completeDir, normalized: normalizedComplete },
+      desiredPath: { original: desiredPath, normalized: normalizedDesired },
+    });
+
+    // Case 1: Desired path exactly matches complete_dir
+    // Use empty string so downloads go to complete_dir root
+    if (normalizedComplete === normalizedDesired) {
+      logger.debug('Path match result: EXACT_MATCH - paths are identical after normalization');
+      logger.info('Desired path matches SABnzbd complete_dir, using category root');
+      return '';
+    }
+
+    // Case 2: Desired path is under complete_dir
+    // Calculate relative path (SABnzbd will append it to complete_dir)
+    if (normalizedDesired.startsWith(normalizedComplete + '/')) {
+      const relativePath = desiredPath.substring(completeDir.length).replace(/^[/\\]+/, '');
+      logger.debug('Path match result: SUBDIRECTORY - desired path is under complete_dir', {
+        relativePath,
+        calculation: `"${desiredPath}".substring(${completeDir.length}) = "${relativePath}"`,
+      });
+      logger.info(`Desired path is under complete_dir, using relative path: ${relativePath}`);
+      return relativePath;
+    }
+
+    // Case 3: Desired path is completely different
+    // Use absolute path (SABnzbd will use it directly)
+    logger.debug('Path match result: DIFFERENT - paths do not overlap, using absolute path');
+    logger.info(`Desired path differs from complete_dir, using absolute path: ${desiredPath}`);
+    return desiredPath;
+  }
+
+  /**
+   * Ensure the category exists with the correct download path
+   *
+   * This method handles the complexity of SABnzbd's path handling:
+   * - Fetches SABnzbd's complete_dir to understand where downloads go
+   * - Applies remote path mapping to translate between RMAB and SABnzbd perspectives
+   * - Calculates the appropriate category path (relative or absolute)
+   * - Creates or updates the category as needed
+   *
+   * Called before every download to ensure path settings stay synchronized.
+   */
+  async ensureCategory(): Promise<void> {
     try {
+      logger.debug('ensureCategory() called - syncing category path with SABnzbd');
+
+      // Get SABnzbd's configuration including complete_dir
       const config = await this.getConfig();
-      const categoryExists = config.categories.some(cat => cat.name === this.defaultCategory);
+      const completeDir = config.completeDir;
 
-      if (!categoryExists) {
-        logger.info(`Creating category: ${this.defaultCategory}`);
+      logger.debug('Retrieved SABnzbd configuration', {
+        completeDir: completeDir || '(not set)',
+        existingCategories: config.categories.map(c => ({ name: c.name, dir: c.dir || '(root)' })),
+      });
 
-        // Create category
+      if (!completeDir) {
+        logger.warn('SABnzbd complete_dir not found in config, category path may be incorrect');
+      }
+
+      // Apply reverse path mapping to get the path from SABnzbd's perspective
+      // Example: RMAB sees /downloads, SABnzbd sees /mnt/usenet/complete
+      logger.debug('Applying reverse path mapping', {
+        inputPath: this.defaultDownloadDir,
+        pathMappingEnabled: this.pathMappingConfig.enabled,
+        remotePath: this.pathMappingConfig.remotePath || '(not set)',
+        localPath: this.pathMappingConfig.localPath || '(not set)',
+      });
+
+      const desiredPath = PathMapper.reverseTransform(this.defaultDownloadDir, this.pathMappingConfig);
+
+      const pathWasTransformed = desiredPath !== this.defaultDownloadDir;
+      logger.debug('Reverse path mapping result', {
+        originalPath: this.defaultDownloadDir,
+        transformedPath: desiredPath,
+        wasTransformed: pathWasTransformed,
+      });
+
+      logger.info('Category path calculation', {
+        rmabDownloadDir: this.defaultDownloadDir,
+        pathMappingEnabled: this.pathMappingConfig.enabled,
+        desiredPathForSab: desiredPath,
+        sabCompleteDir: completeDir,
+      });
+
+      // Calculate the correct category path
+      const categoryPath = completeDir
+        ? this.calculateCategoryPath(completeDir, desiredPath)
+        : desiredPath; // Fallback to desired path if complete_dir unknown
+
+      logger.debug('Final category path determined', {
+        categoryPath: categoryPath || '(empty - downloads to complete_dir root)',
+        category: this.defaultCategory,
+      });
+
+      // Check if category exists and has the correct path
+      const existingCategory = config.categories.find(cat => cat.name === this.defaultCategory);
+
+      logger.debug('Checking existing category', {
+        categoryName: this.defaultCategory,
+        exists: !!existingCategory,
+        currentDir: existingCategory?.dir || '(not set)',
+        targetDir: categoryPath || '(root)',
+        needsUpdate: existingCategory ? existingCategory.dir !== categoryPath : true,
+      });
+
+      if (!existingCategory) {
+        // Create new category
+        logger.info(`Creating category "${this.defaultCategory}" with path: "${categoryPath || '(root)'}"`);
+        logger.debug('SABnzbd API call: set_config (create category)', {
+          section: 'categories',
+          keyword: this.defaultCategory,
+          dir: categoryPath,
+        });
+
         await this.client.get('/api', {
           params: {
             mode: 'set_config',
             section: 'categories',
             keyword: this.defaultCategory,
-            value: downloadPath || '',
+            dir: categoryPath,
             output: 'json',
             apikey: this.apiKey,
           },
         });
 
-        logger.info(`Category created successfully: ${this.defaultCategory}`);
+        logger.info(`Category "${this.defaultCategory}" created successfully`);
+      } else if (existingCategory.dir !== categoryPath) {
+        // Update existing category with new path
+        logger.info(`Updating category "${this.defaultCategory}" path from "${existingCategory.dir || '(root)'}" to "${categoryPath || '(root)'}"`);
+        logger.debug('SABnzbd API call: set_config (update category)', {
+          section: 'categories',
+          keyword: this.defaultCategory,
+          oldDir: existingCategory.dir,
+          newDir: categoryPath,
+        });
+
+        await this.client.get('/api', {
+          params: {
+            mode: 'set_config',
+            section: 'categories',
+            keyword: this.defaultCategory,
+            dir: categoryPath,
+            output: 'json',
+            apikey: this.apiKey,
+          },
+        });
+
+        logger.info(`Category "${this.defaultCategory}" path updated successfully`);
       } else {
-        logger.info(`Category already exists: ${this.defaultCategory}`);
+        logger.debug(`Category "${this.defaultCategory}" already has correct path: "${categoryPath || '(root)'}" - no update needed`);
       }
     } catch (error) {
       logger.error('Failed to ensure category', { error: error instanceof Error ? error.message : String(error) });
-      // Don't throw - category creation failure shouldn't block downloads
+      // Don't throw - category issues shouldn't block downloads
+      // Downloads will still work, just may end up in wrong location
     }
   }
 
@@ -272,11 +453,17 @@ export class SABnzbdService {
   async addNZB(url: string, options?: AddNZBOptions): Promise<string> {
     logger.info(`Adding NZB from URL: ${url.substring(0, 150)}...`);
 
+    const category = options?.category || this.defaultCategory;
+
+    // Ensure category exists with correct path before every download
+    // This syncs the category path with SABnzbd's complete_dir and handles path mapping
+    await this.ensureCategory();
+
     const response = await this.client.get('/api', {
       params: {
         mode: 'addurl',
         name: url,
-        cat: options?.category || this.defaultCategory,
+        cat: category,
         priority: this.mapPriority(options?.priority),
         pp: '3', // Post-processing: +Repair, +Unpack, +Delete
         output: 'json',
@@ -583,55 +770,90 @@ export class SABnzbdService {
  * Singleton instance and factory
  */
 let sabnzbdServiceInstance: SABnzbdService | null = null;
+let configLoaded = false;
 
 export async function getSABnzbdService(): Promise<SABnzbdService> {
-  if (sabnzbdServiceInstance) {
+  // Always recreate if config hasn't been loaded successfully
+  if (sabnzbdServiceInstance && configLoaded) {
     return sabnzbdServiceInstance;
   }
 
-  // Load configuration from download client manager (uses new multi-client config format)
-  const { getConfigService } = await import('../services/config.service');
-  const { getDownloadClientManager } = await import('../services/download-client-manager.service');
-  const configService = await getConfigService();
-  const manager = getDownloadClientManager(configService);
+  try {
+    // Load configuration from download client manager (uses new multi-client config format)
+    const { getConfigService } = await import('../services/config.service');
+    const { getDownloadClientManager } = await import('../services/download-client-manager.service');
+    const configService = await getConfigService();
+    const manager = getDownloadClientManager(configService);
 
-  logger.info('Loading configuration from download client manager...');
-  const clientConfig = await manager.getClientForProtocol('usenet');
+    logger.info('Loading configuration from download client manager...');
+    const clientConfig = await manager.getClientForProtocol('usenet');
 
-  if (!clientConfig) {
-    throw new Error('SABnzbd is not configured. Please configure a SABnzbd client in the admin settings.');
+    if (!clientConfig) {
+      throw new Error('SABnzbd is not configured. Please configure a SABnzbd client in the admin settings.');
+    }
+
+    if (clientConfig.type !== 'sabnzbd') {
+      throw new Error(`Expected SABnzbd client but found ${clientConfig.type}`);
+    }
+
+    // Get download_dir from main config
+    const downloadDir = await configService.get('download_dir') || '/downloads';
+
+    logger.debug('RMAB download_dir from config', { downloadDir });
+
+    // Build path mapping configuration from client settings
+    const pathMappingConfig: PathMappingConfig = {
+      enabled: clientConfig.remotePathMappingEnabled || false,
+      remotePath: clientConfig.remotePath || '',
+      localPath: clientConfig.localPath || '',
+    };
+
+    logger.debug('Path mapping configuration built', {
+      enabled: pathMappingConfig.enabled,
+      remotePath: pathMappingConfig.remotePath || '(not set)',
+      localPath: pathMappingConfig.localPath || '(not set)',
+      explanation: pathMappingConfig.enabled
+        ? `Will translate "${pathMappingConfig.localPath}" ↔ "${pathMappingConfig.remotePath}"`
+        : 'Path mapping disabled - paths used as-is',
+    });
+
+    logger.info('Config loaded:', {
+      name: clientConfig.name,
+      hasUrl: !!clientConfig.url,
+      hasApiKey: !!clientConfig.password,
+      disableSSLVerify: clientConfig.disableSSLVerify,
+      downloadDir,
+      pathMappingEnabled: pathMappingConfig.enabled,
+    });
+
+    if (!clientConfig.url || !clientConfig.password) {
+      throw new Error('SABnzbd is not fully configured. Please check your configuration in admin settings.');
+    }
+
+    sabnzbdServiceInstance = new SABnzbdService(
+      clientConfig.url,
+      clientConfig.password, // API key stored in password field
+      clientConfig.category || 'readmeabook',
+      downloadDir,
+      clientConfig.disableSSLVerify,
+      pathMappingConfig
+    );
+
+    // Ensure category exists with correct path (handles path mapping and complete_dir sync)
+    await sabnzbdServiceInstance.ensureCategory();
+
+    configLoaded = true;
+    return sabnzbdServiceInstance;
+  } catch (error) {
+    logger.error('Failed to initialize service', { error: error instanceof Error ? error.message : String(error) });
+    sabnzbdServiceInstance = null;
+    configLoaded = false;
+    throw error;
   }
-
-  if (clientConfig.type !== 'sabnzbd') {
-    throw new Error(`Expected SABnzbd client but found ${clientConfig.type}`);
-  }
-
-  logger.info('Config loaded:', {
-    name: clientConfig.name,
-    hasUrl: !!clientConfig.url,
-    hasApiKey: !!clientConfig.password,
-    disableSSLVerify: clientConfig.disableSSLVerify,
-  });
-
-  if (!clientConfig.url || !clientConfig.password) {
-    throw new Error('SABnzbd is not fully configured. Please check your configuration in admin settings.');
-  }
-
-  sabnzbdServiceInstance = new SABnzbdService(
-    clientConfig.url,
-    clientConfig.password, // API key stored in password field
-    clientConfig.category || 'readmeabook',
-    clientConfig.disableSSLVerify
-  );
-
-  // Ensure category exists
-  const downloadDir = await configService.get('download_dir');
-  await sabnzbdServiceInstance.ensureCategory(downloadDir || undefined);
-
-  return sabnzbdServiceInstance;
 }
 
 export function invalidateSABnzbdService(): void {
   sabnzbdServiceInstance = null;
+  configLoaded = false;
   logger.info('Service singleton invalidated');
 }

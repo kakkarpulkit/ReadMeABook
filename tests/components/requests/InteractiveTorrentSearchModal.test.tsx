@@ -13,6 +13,10 @@ const searchByRequestMock = vi.hoisted(() => vi.fn());
 const selectTorrentMock = vi.hoisted(() => vi.fn());
 const searchByAudiobookMock = vi.hoisted(() => vi.fn());
 const requestWithTorrentMock = vi.hoisted(() => vi.fn());
+const searchEbooksMock = vi.hoisted(() => vi.fn());
+const selectEbookMock = vi.hoisted(() => vi.fn());
+const searchEbooksByAsinMock = vi.hoisted(() => vi.fn());
+const selectEbookByAsinMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/useRequests', () => ({
   useInteractiveSearch: () => ({
@@ -32,6 +36,26 @@ vi.mock('@/lib/hooks/useRequests', () => ({
   }),
   useRequestWithTorrent: () => ({
     requestWithTorrent: requestWithTorrentMock,
+    isLoading: false,
+    error: null,
+  }),
+  useInteractiveSearchEbook: () => ({
+    searchEbooks: searchEbooksMock,
+    isLoading: false,
+    error: null,
+  }),
+  useSelectEbook: () => ({
+    selectEbook: selectEbookMock,
+    isLoading: false,
+    error: null,
+  }),
+  useInteractiveSearchEbookByAsin: () => ({
+    searchEbooks: searchEbooksByAsinMock,
+    isLoading: false,
+    error: null,
+  }),
+  useSelectEbookByAsin: () => ({
+    selectEbook: selectEbookByAsinMock,
     isLoading: false,
     error: null,
   }),

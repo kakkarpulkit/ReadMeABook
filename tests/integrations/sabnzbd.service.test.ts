@@ -119,31 +119,43 @@ describe('SABnzbdService', () => {
   });
 
   it('adds NZB with mapped priority', async () => {
-    clientMock.get.mockResolvedValueOnce({
-      data: { status: true, nzo_ids: ['nzb-1'] },
-    });
+    // Mock getConfig for ensureCategory (called before adding NZB)
+    clientMock.get
+      .mockResolvedValueOnce({
+        data: { config: { version: '1', misc: { complete_dir: '/downloads' }, categories: { books: { dir: '' } } } },
+      })
+      .mockResolvedValueOnce({
+        data: { status: true, nzo_ids: ['nzb-1'] },
+      });
 
-    const service = new SABnzbdService('http://sab', 'key');
+    const service = new SABnzbdService('http://sab', 'key', 'books', '/downloads');
     const nzbId = await service.addNZB('https://example.com/book.nzb', {
       category: 'books',
       priority: 'high',
     });
 
-    const params = clientMock.get.mock.calls[0][1].params;
+    // Second call is the addurl call
+    const params = clientMock.get.mock.calls[1][1].params;
     expect(nzbId).toBe('nzb-1');
     expect(params.cat).toBe('books');
     expect(params.priority).toBe('1');
   });
 
   it('adds NZB with force priority', async () => {
-    clientMock.get.mockResolvedValueOnce({
-      data: { status: true, nzo_ids: ['nzb-9'] },
-    });
+    // Mock getConfig for ensureCategory (called before adding NZB)
+    clientMock.get
+      .mockResolvedValueOnce({
+        data: { config: { version: '1', misc: { complete_dir: '/downloads' }, categories: { readmeabook: { dir: '' } } } },
+      })
+      .mockResolvedValueOnce({
+        data: { status: true, nzo_ids: ['nzb-9'] },
+      });
 
-    const service = new SABnzbdService('http://sab', 'key');
+    const service = new SABnzbdService('http://sab', 'key', 'readmeabook', '/downloads');
     await service.addNZB('https://example.com/book.nzb', { priority: 'force' });
 
-    const params = clientMock.get.mock.calls[0][1].params;
+    // Second call is the addurl call
+    const params = clientMock.get.mock.calls[1][1].params;
     expect(params.priority).toBe('2');
   });
 
@@ -376,12 +388,12 @@ describe('SABnzbdService', () => {
   it('creates the default category when missing', async () => {
     clientMock.get
       .mockResolvedValueOnce({
-        data: { config: { version: '1', categories: {} } },
+        data: { config: { version: '1', misc: { complete_dir: '/mnt/usenet/complete' }, categories: {} } },
       })
       .mockResolvedValueOnce({ data: { status: true } });
 
-    const service = new SABnzbdService('http://sab', 'key', 'readmeabook');
-    await service.ensureCategory('/downloads');
+    const service = new SABnzbdService('http://sab', 'key', 'readmeabook', '/downloads');
+    await service.ensureCategory();
 
     expect(clientMock.get).toHaveBeenCalledWith('/api', expect.objectContaining({
       params: expect.objectContaining({ mode: 'set_config', keyword: 'readmeabook' }),
@@ -389,46 +401,58 @@ describe('SABnzbdService', () => {
   });
 
   it('swallows errors when ensuring categories fails', async () => {
-    const service = new SABnzbdService('http://sab', 'key', 'readmeabook');
+    const service = new SABnzbdService('http://sab', 'key', 'readmeabook', '/downloads');
     const configSpy = vi.spyOn(service, 'getConfig').mockRejectedValue(new Error('bad config'));
 
-    await expect(service.ensureCategory('/downloads')).resolves.toBeUndefined();
+    await expect(service.ensureCategory()).resolves.toBeUndefined();
 
     configSpy.mockRestore();
   });
 
-  it('does not create category when it already exists', async () => {
+  it('does not create category when it already exists with correct path', async () => {
     clientMock.get.mockResolvedValueOnce({
       data: {
         config: {
           version: '1',
+          misc: { complete_dir: '/mnt/usenet/complete' },
           categories: { readmeabook: { dir: '/downloads' } },
         },
       },
     });
 
-    const service = new SABnzbdService('http://sab', 'key', 'readmeabook');
-    await service.ensureCategory('/downloads');
+    const service = new SABnzbdService('http://sab', 'key', 'readmeabook', '/downloads');
+    await service.ensureCategory();
 
+    // Only get_config called, no set_config because path already matches
     expect(clientMock.get).toHaveBeenCalledTimes(1);
     expect(clientMock.get.mock.calls[0][1].params.mode).toBe('get_config');
   });
   it('throws when addNZB reports a failure', async () => {
-    clientMock.get.mockResolvedValueOnce({
-      data: { status: false, error: 'Bad NZB' },
-    });
+    // Mock getConfig for ensureCategory, then the addurl failure
+    clientMock.get
+      .mockResolvedValueOnce({
+        data: { config: { version: '1', misc: { complete_dir: '/downloads' }, categories: { readmeabook: { dir: '' } } } },
+      })
+      .mockResolvedValueOnce({
+        data: { status: false, error: 'Bad NZB' },
+      });
 
-    const service = new SABnzbdService('http://sab', 'key');
+    const service = new SABnzbdService('http://sab', 'key', 'readmeabook', '/downloads');
 
     await expect(service.addNZB('https://example.com/book.nzb')).rejects.toThrow('Bad NZB');
   });
 
   it('throws when SABnzbd returns no NZB IDs', async () => {
-    clientMock.get.mockResolvedValueOnce({
-      data: { status: true, nzo_ids: [] },
-    });
+    // Mock getConfig for ensureCategory, then the addurl with empty IDs
+    clientMock.get
+      .mockResolvedValueOnce({
+        data: { config: { version: '1', misc: { complete_dir: '/downloads' }, categories: { readmeabook: { dir: '' } } } },
+      })
+      .mockResolvedValueOnce({
+        data: { status: true, nzo_ids: [] },
+      });
 
-    const service = new SABnzbdService('http://sab', 'key');
+    const service = new SABnzbdService('http://sab', 'key', 'readmeabook', '/downloads');
 
     await expect(service.addNZB('https://example.com/book.nzb')).rejects.toThrow('did not return an NZB ID');
   });
@@ -491,8 +515,281 @@ describe('SABnzbdService', () => {
     const again = await getSABnzbdService();
 
     expect(service).toBe(again);
-    expect(ensureSpy).toHaveBeenCalledWith('/downloads');
+    expect(ensureSpy).toHaveBeenCalled();
 
     ensureSpy.mockRestore();
+  });
+
+  it('creates singleton with path mapping config when enabled', async () => {
+    downloadClientManagerMock.getClientForProtocol.mockResolvedValue({
+      id: 'client-1',
+      type: 'sabnzbd',
+      name: 'SABnzbd',
+      enabled: true,
+      url: 'http://sab',
+      password: 'api-key',
+      disableSSLVerify: false,
+      remotePathMappingEnabled: true,
+      remotePath: '/mnt/usenet/complete',
+      localPath: '/downloads',
+      category: 'readmeabook',
+    });
+    configServiceMock.get.mockResolvedValue('/downloads');
+
+    const ensureSpy = vi.spyOn(SABnzbdService.prototype, 'ensureCategory').mockResolvedValue();
+
+    const service = await getSABnzbdService();
+
+    expect(service).toBeDefined();
+    expect(ensureSpy).toHaveBeenCalled();
+
+    ensureSpy.mockRestore();
+  });
+
+  describe('Path Mapping', () => {
+    it('uses empty category path when download_dir matches complete_dir', async () => {
+      clientMock.get
+        .mockResolvedValueOnce({
+          data: {
+            config: {
+              version: '1',
+              misc: { complete_dir: '/downloads' },
+              categories: {},
+            },
+          },
+        })
+        .mockResolvedValueOnce({ data: { status: true } });
+
+      const service = new SABnzbdService('http://sab', 'key', 'readmeabook', '/downloads');
+      await service.ensureCategory();
+
+      // Should set empty dir when paths match
+      const setCategoryCall = clientMock.get.mock.calls.find(
+        (call) => call[1]?.params?.mode === 'set_config'
+      );
+      expect(setCategoryCall).toBeDefined();
+      expect(setCategoryCall![1].params.dir).toBe('');
+    });
+
+    it('uses relative path when download_dir is under complete_dir', async () => {
+      clientMock.get
+        .mockResolvedValueOnce({
+          data: {
+            config: {
+              version: '1',
+              misc: { complete_dir: '/mnt/usenet/complete' },
+              categories: {},
+            },
+          },
+        })
+        .mockResolvedValueOnce({ data: { status: true } });
+
+      const service = new SABnzbdService(
+        'http://sab',
+        'key',
+        'readmeabook',
+        '/mnt/usenet/complete/audiobooks'
+      );
+      await service.ensureCategory();
+
+      const setCategoryCall = clientMock.get.mock.calls.find(
+        (call) => call[1]?.params?.mode === 'set_config'
+      );
+      expect(setCategoryCall).toBeDefined();
+      expect(setCategoryCall![1].params.dir).toBe('audiobooks');
+    });
+
+    it('uses absolute path when download_dir differs from complete_dir', async () => {
+      clientMock.get
+        .mockResolvedValueOnce({
+          data: {
+            config: {
+              version: '1',
+              misc: { complete_dir: '/mnt/usenet/complete' },
+              categories: {},
+            },
+          },
+        })
+        .mockResolvedValueOnce({ data: { status: true } });
+
+      const service = new SABnzbdService(
+        'http://sab',
+        'key',
+        'readmeabook',
+        '/different/path/audiobooks'
+      );
+      await service.ensureCategory();
+
+      const setCategoryCall = clientMock.get.mock.calls.find(
+        (call) => call[1]?.params?.mode === 'set_config'
+      );
+      expect(setCategoryCall).toBeDefined();
+      expect(setCategoryCall![1].params.dir).toBe('/different/path/audiobooks');
+    });
+
+    it('applies reverse path mapping before comparing with complete_dir', async () => {
+      clientMock.get
+        .mockResolvedValueOnce({
+          data: {
+            config: {
+              version: '1',
+              misc: { complete_dir: '/mnt/usenet/complete' },
+              categories: {},
+            },
+          },
+        })
+        .mockResolvedValueOnce({ data: { status: true } });
+
+      // RMAB sees /downloads but SABnzbd sees /mnt/usenet/complete
+      const pathMappingConfig = {
+        enabled: true,
+        remotePath: '/mnt/usenet/complete',
+        localPath: '/downloads',
+      };
+
+      const service = new SABnzbdService(
+        'http://sab',
+        'key',
+        'readmeabook',
+        '/downloads', // RMAB's local path
+        false,
+        pathMappingConfig
+      );
+      await service.ensureCategory();
+
+      // After reverse transform, /downloads becomes /mnt/usenet/complete
+      // which matches complete_dir, so category dir should be empty
+      const setCategoryCall = clientMock.get.mock.calls.find(
+        (call) => call[1]?.params?.mode === 'set_config'
+      );
+      expect(setCategoryCall).toBeDefined();
+      expect(setCategoryCall![1].params.dir).toBe('');
+    });
+
+    it('updates category path when it differs from calculated path', async () => {
+      clientMock.get
+        .mockResolvedValueOnce({
+          data: {
+            config: {
+              version: '1',
+              misc: { complete_dir: '/mnt/usenet/complete' },
+              categories: { readmeabook: { dir: '/old/path' } },
+            },
+          },
+        })
+        .mockResolvedValueOnce({ data: { status: true } });
+
+      const service = new SABnzbdService(
+        'http://sab',
+        'key',
+        'readmeabook',
+        '/mnt/usenet/complete/audiobooks'
+      );
+      await service.ensureCategory();
+
+      // Should update the category with new relative path
+      const setCategoryCall = clientMock.get.mock.calls.find(
+        (call) => call[1]?.params?.mode === 'set_config'
+      );
+      expect(setCategoryCall).toBeDefined();
+      expect(setCategoryCall![1].params.dir).toBe('audiobooks');
+    });
+
+    it('fetches complete_dir from SABnzbd config', async () => {
+      clientMock.get.mockResolvedValueOnce({
+        data: {
+          config: {
+            version: '4.0.0',
+            misc: { complete_dir: '/mnt/usenet/complete' },
+            categories: { test: { dir: 'test-dir' } },
+          },
+        },
+      });
+
+      const service = new SABnzbdService('http://sab', 'key', 'readmeabook', '/downloads');
+      const config = await service.getConfig();
+
+      expect(config.completeDir).toBe('/mnt/usenet/complete');
+      expect(config.categories).toEqual([{ name: 'test', dir: 'test-dir' }]);
+    });
+
+    it('returns complete_dir via getCompleteDir helper', async () => {
+      clientMock.get.mockResolvedValueOnce({
+        data: {
+          config: {
+            version: '4.0.0',
+            misc: { complete_dir: '/var/usenet/done' },
+            categories: {},
+          },
+        },
+      });
+
+      const service = new SABnzbdService('http://sab', 'key', 'readmeabook', '/downloads');
+      const completeDir = await service.getCompleteDir();
+
+      expect(completeDir).toBe('/var/usenet/done');
+    });
+
+    it('handles missing complete_dir gracefully', async () => {
+      clientMock.get
+        .mockResolvedValueOnce({
+          data: {
+            config: {
+              version: '4.0.0',
+              misc: {}, // No complete_dir
+              categories: {},
+            },
+          },
+        })
+        .mockResolvedValueOnce({ data: { status: true } });
+
+      const service = new SABnzbdService('http://sab', 'key', 'readmeabook', '/downloads');
+      await service.ensureCategory();
+
+      // Should fallback to using download_dir directly
+      const setCategoryCall = clientMock.get.mock.calls.find(
+        (call) => call[1]?.params?.mode === 'set_config'
+      );
+      expect(setCategoryCall).toBeDefined();
+      expect(setCategoryCall![1].params.dir).toBe('/downloads');
+    });
+
+    it('handles Windows-style paths in path mapping', async () => {
+      clientMock.get
+        .mockResolvedValueOnce({
+          data: {
+            config: {
+              version: '1',
+              misc: { complete_dir: 'D:\\Usenet\\Complete' },
+              categories: {},
+            },
+          },
+        })
+        .mockResolvedValueOnce({ data: { status: true } });
+
+      const pathMappingConfig = {
+        enabled: true,
+        remotePath: 'D:\\Usenet\\Complete',
+        localPath: '/downloads',
+      };
+
+      const service = new SABnzbdService(
+        'http://sab',
+        'key',
+        'readmeabook',
+        '/downloads',
+        false,
+        pathMappingConfig
+      );
+      await service.ensureCategory();
+
+      // After reverse transform and comparison (normalized), should match
+      const setCategoryCall = clientMock.get.mock.calls.find(
+        (call) => call[1]?.params?.mode === 'set_config'
+      );
+      expect(setCategoryCall).toBeDefined();
+      // Path should be empty since /downloads maps to D:\Usenet\Complete which matches complete_dir
+      expect(setCategoryCall![1].params.dir).toBe('');
+    });
   });
 });

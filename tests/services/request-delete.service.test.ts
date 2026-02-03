@@ -110,9 +110,8 @@ describe('deleteRequest', () => {
     prismaMock.audibleCache.findUnique.mockResolvedValueOnce({
       releaseDate: '2021-01-01T00:00:00.000Z',
     });
-    prismaMock.plexLibrary.findMany.mockResolvedValue([
-      { id: 'lib-1', title: 'Book', author: 'Author' },
-    ]);
+    // Mock deleteMany for ASIN-based deletion
+    prismaMock.plexLibrary.deleteMany.mockResolvedValue({ count: 1 });
     fsMock.access.mockResolvedValue(undefined);
     fsMock.rm.mockResolvedValue(undefined);
     prismaMock.request.update.mockResolvedValue({});
@@ -124,7 +123,15 @@ describe('deleteRequest', () => {
     expect(result.success).toBe(true);
     expect(result.torrentsRemoved).toBe(1);
     expect(qbtMock.deleteTorrent).toHaveBeenCalledWith('hash-1', true);
-    expect(prismaMock.plexLibrary.delete).toHaveBeenCalledWith({ where: { id: 'lib-1' } });
+    // Code now uses deleteMany with ASIN-based matching
+    expect(prismaMock.plexLibrary.deleteMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { asin: 'ASIN1' },
+          { plexGuid: { contains: 'ASIN1' } },
+        ],
+      },
+    });
 
     const expectedPath = path.join('/media', 'Author', 'Book ASIN1');
     expect(fsMock.rm).toHaveBeenCalledWith(expectedPath, { recursive: true, force: true });

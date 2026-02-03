@@ -100,9 +100,20 @@ model Request {
      - Queries plex_library table to get plexRatingKey from audiobook's plexGuid
      - Calls Plex DELETE `/library/metadata/{ratingKey}` endpoint with the ratingKey
      - Requires deletion enabled in Plex: Settings > Server > Library
-     - Also clears plex_library cache records
 
-5. **Soft Delete Request**
+5. **Delete plex_library Cache Records**
+   - **Primary:** Delete by ASIN (same query as availability check)
+     - `WHERE asin = audiobookAsin OR plexGuid CONTAINS audiobookAsin`
+     - Ensures exact same record found during availability check gets deleted
+   - **Fallback:** Delete by exact title/author (for legacy records without ASIN)
+     - Only used if ASIN-based deletion finds no records
+   - **Result:** Book immediately shows as NOT available, can be re-requested
+
+6. **Clear Audiobook Linkage**
+   - Reset audiobook.status to 'requested'
+   - Clear plexGuid (Plex mode) or absItemId (ABS mode)
+
+7. **Soft Delete Request**
    - UPDATE: `deletedAt = NOW(), deletedBy = adminUserId`
    - Preserves for audit trail and orphaned download tracking
 
@@ -201,6 +212,17 @@ where: {
 11. ✅ **Plex library item deletion fails** - Log error, continue with soft delete
 12. ✅ **No plexGuid present** - Skip Plex deletion (not yet in library)
 13. ✅ **Plex deletion not enabled in settings** - Log error, continue with soft delete
+14. ✅ **Title mismatch in plex_library** - ASIN-based deletion handles title variations (e.g., "(Unabridged)" suffix)
+15. ✅ **No ASIN available** - Falls back to exact title/author matching
+
+## Fixed Issues ✅
+
+**1. Book Shows "Available" After Deletion Until Library Scan**
+- **Issue:** Deleted books remained "available" until the next library scan
+- **Cause:** plex_library deletion used title/author matching, but availability check used ASIN matching
+- **Impact:** Title variations (e.g., "Book Title" vs "Book Title (Unabridged)") caused plex_library records to persist
+- **Fix:** Changed plex_library deletion to use ASIN-based matching (same as availability check)
+- **Result:** Books immediately show as NOT available after deletion, can be re-requested right away
 
 ## File Structure
 

@@ -42,6 +42,8 @@ describe('processSearchEbook', () => {
     configServiceMock.get.mockImplementation(async (key: string) => {
       if (key === 'ebook_sidecar_preferred_format') return 'epub';
       if (key === 'ebook_sidecar_base_url') return 'https://annas-archive.li';
+      if (key === 'ebook_annas_archive_enabled') return 'true';
+      if (key === 'ebook_indexer_search_enabled') return 'false';
       return null;
     });
   });
@@ -71,7 +73,7 @@ describe('processSearchEbook', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.message).toContain('ASIN');
+    expect(result.message).toContain("Anna's Archive");
     expect(ebookScraperMock.searchByAsin).toHaveBeenCalledWith(
       'B001ASIN',
       'epub',
@@ -113,7 +115,7 @@ describe('processSearchEbook', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.message).toContain('title search');
+    expect(result.message).toContain("Anna's Archive");
     expect(ebookScraperMock.searchByAsin).toHaveBeenCalled();
     expect(ebookScraperMock.searchByTitle).toHaveBeenCalledWith(
       'Another Book',
@@ -179,6 +181,7 @@ describe('processSearchEbook', () => {
       data: expect.objectContaining({
         status: 'awaiting_search',
         errorMessage: expect.stringContaining('No ebook found'),
+        lastSearchAt: expect.any(Date),
       }),
     });
     expect(jobQueueMock.addStartDirectDownloadJob).not.toHaveBeenCalled();
@@ -209,7 +212,8 @@ describe('processSearchEbook', () => {
       where: { id: 'req-5' },
       data: expect.objectContaining({
         status: 'awaiting_search',
-        errorMessage: expect.stringContaining('no download links'),
+        errorMessage: expect.stringContaining('No ebook found'),
+        lastSearchAt: expect.any(Date),
       }),
     });
   });
@@ -223,6 +227,8 @@ describe('processSearchEbook', () => {
       if (key === 'ebook_sidecar_preferred_format') return 'epub';
       if (key === 'ebook_sidecar_base_url') return 'https://annas-archive.li';
       if (key === 'ebook_sidecar_flaresolverr_url') return 'http://flaresolverr:8191';
+      if (key === 'ebook_annas_archive_enabled') return 'true';
+      if (key === 'ebook_indexer_search_enabled') return 'false';
       return null;
     });
 

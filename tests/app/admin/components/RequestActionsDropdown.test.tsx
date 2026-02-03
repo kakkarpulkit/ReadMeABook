@@ -98,9 +98,9 @@ describe('RequestActionsDropdown', () => {
     fireEvent.click(screen.getByTitle('Actions'));
 
     expect(screen.getByText('View Source')).toBeInTheDocument();
-    expect(screen.getByText('Try to fetch Ebook')).toBeInTheDocument();
+    expect(screen.getByText('Grab Ebook')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Try to fetch Ebook'));
+    fireEvent.click(screen.getByText('Grab Ebook'));
     await waitFor(() => expect(onFetchEbook).toHaveBeenCalledWith('req-2'));
   });
 });

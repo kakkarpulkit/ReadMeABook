@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const useAuthMock = vi.hoisted(() => vi.fn());
 const useAudiobookDetailsMock = vi.hoisted(() => vi.fn());
 const createRequestMock = vi.hoisted(() => vi.fn());
+const fetchEbookMock = vi.hoisted(() => vi.fn());
+const revalidateEbookStatusMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => useAuthMock(),
@@ -23,6 +25,11 @@ vi.mock('@/lib/hooks/useAudiobooks', () => ({
 
 vi.mock('@/lib/hooks/useRequests', () => ({
   useCreateRequest: () => ({ createRequest: createRequestMock, isLoading: false }),
+  useEbookStatus: () => ({
+    ebookStatus: { ebookSourcesEnabled: false, hasActiveEbookRequest: false },
+    revalidate: revalidateEbookStatusMock,
+  }),
+  useFetchEbookByAsin: () => ({ fetchEbook: fetchEbookMock, isLoading: false }),
 }));
 
 vi.mock('@/components/requests/InteractiveTorrentSearchModal', () => ({

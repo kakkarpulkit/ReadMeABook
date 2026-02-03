@@ -44,7 +44,8 @@ describe('IndexerConfigModal', () => {
         priority: 25,
         seedingTimeMinutes: 0,
         rssEnabled: false,
-        categories: expect.arrayContaining([3030]),
+        audiobookCategories: expect.arrayContaining([3030]),
+        ebookCategories: expect.arrayContaining([7020]),
       })
     );
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -63,6 +64,7 @@ describe('IndexerConfigModal', () => {
       />
     );
 
+    // Find the Audiobook toggle in the category tree and click it to deselect
     const audiobookLabel = screen.getByText('Audiobook');
     const audiobookRow = audiobookLabel.closest('div')?.parentElement;
     if (!audiobookRow) {
@@ -72,7 +74,8 @@ describe('IndexerConfigModal', () => {
     fireEvent.click(within(audiobookRow).getByRole('switch'));
     fireEvent.click(screen.getByRole('button', { name: 'Add Indexer' }));
 
-    expect(screen.getByText('At least one category must be selected')).toBeInTheDocument();
+    // Component now shows specific error for audiobook categories
+    expect(screen.getByText('At least one audiobook category must be selected')).toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
   });
 
