@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/requests/StatusBadge';
 import { useAudiobookDetails } from '@/lib/hooks/useAudiobooks';
-import { useCreateRequest } from '@/lib/hooks/useRequests';
+import { useCreateRequest, useEbookStatus, useFetchEbookByAsin } from '@/lib/hooks/useRequests';
 import { useAuth } from '@/contexts/AuthContext';
 import { InteractiveTorrentSearchModal } from '@/components/requests/InteractiveTorrentSearchModal';
 
@@ -39,11 +39,20 @@ export function AudiobookDetailsModal({
   const { user } = useAuth();
   const { audiobook, isLoading, error } = useAudiobookDetails(isOpen ? asin : null);
   const { createRequest, isLoading: isRequesting } = useCreateRequest();
+  const { ebookStatus, revalidate: revalidateEbookStatus } = useEbookStatus(isOpen && isAvailable ? asin : null);
+  const { fetchEbook, isLoading: isFetchingEbook } = useFetchEbookByAsin();
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('Request created successfully!');
   const [requestError, setRequestError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showInteractiveSearch, setShowInteractiveSearch] = useState(false);
+  const [showInteractiveSearchEbook, setShowInteractiveSearchEbook] = useState(false);
   const [asinCopied, setAsinCopied] = useState(false);
+
+  // Determine if ebook buttons should be shown
+  const canShowEbookButtons = isAvailable &&
+    ebookStatus?.ebookSourcesEnabled &&
+    !ebookStatus?.hasActiveEbookRequest;
 
   useEffect(() => {
     setMounted(true);
@@ -68,6 +77,7 @@ export function AudiobookDetailsModal({
 
     try {
       await createRequest(audiobook);
+      setToastMessage('Request created successfully!');
       setShowToast(true);
       setTimeout(() => {
         setShowToast(false);
@@ -101,6 +111,53 @@ export function AudiobookDetailsModal({
   const handleInteractiveSearchSuccess = () => {
     // Request was created and torrent was selected successfully
     onRequestSuccess?.();
+  };
+
+  const handleFetchEbook = async () => {
+    if (!user) {
+      setRequestError('Please log in to request ebooks');
+      return;
+    }
+
+    try {
+      const result = await fetchEbook(asin);
+      revalidateEbookStatus();
+
+      if (result.needsApproval) {
+        setToastMessage('Ebook request submitted for approval!');
+      } else {
+        setToastMessage('Ebook search started!');
+      }
+      setShowToast(true);
+      setTimeout(() => {
+        setShowToast(false);
+      }, 3000);
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : 'Failed to request ebook');
+      setTimeout(() => setRequestError(null), 5000);
+    }
+  };
+
+  const handleInteractiveSearchEbook = () => {
+    if (!user) {
+      setRequestError('Please log in to request ebooks');
+      return;
+    }
+    setShowInteractiveSearchEbook(true);
+  };
+
+  const handleInteractiveSearchEbookClose = () => {
+    setShowInteractiveSearchEbook(false);
+    revalidateEbookStatus();
+  };
+
+  const handleInteractiveSearchEbookSuccess = () => {
+    revalidateEbookStatus();
+    setToastMessage('Ebook download started!');
+    setShowToast(true);
+    setTimeout(() => {
+      setShowToast(false);
+    }, 3000);
   };
 
   const formatDuration = (minutes?: number) => {
@@ -419,13 +476,127 @@ export function AudiobookDetailsModal({
                 // Check if book is already available in library or completed status
                 if (isAvailable || requestStatus === 'completed') {
                   return (
-                    <div className="flex-1">
-                      <div className="w-full py-3 px-6 bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800 rounded-lg text-center">
-                        <span className="text-base font-semibold text-green-700 dark:text-green-400">
-                          Available in Your Library
-                        </span>
+                    <>
+                      <div className="flex-1">
+                        <div className="w-full py-3 px-6 bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800 rounded-lg text-center">
+                          <span className="text-base font-semibold text-green-700 dark:text-green-400">
+                            Available in Your Library
+                          </span>
+                        </div>
                       </div>
-                    </div>
+
+                      {/* Ebook Buttons - Only shown when audiobook is available and ebook sources enabled */}
+                      {canShowEbookButtons && user && (
+                        <>
+                          {/* Grab Ebook Button */}
+                          <button
+                            onClick={handleFetchEbook}
+                            disabled={isFetchingEbook}
+                            className="group relative inline-flex items-center justify-center p-3 rounded-lg border-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            style={{
+                              borderColor: '#f16f19',
+                              backgroundColor: 'rgba(241, 111, 25, 0.1)',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = 'rgba(241, 111, 25, 0.2)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'rgba(241, 111, 25, 0.1)';
+                            }}
+                            title="Grab Ebook"
+                            aria-label="Grab Ebook"
+                          >
+                            {isFetchingEbook ? (
+                              <div className="animate-spin w-6 h-6 border-2 border-current border-t-transparent rounded-full" style={{ color: '#f16f19' }} />
+                            ) : (
+                              <svg
+                                className="w-6 h-6"
+                                style={{ color: '#f16f19' }}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                                />
+                              </svg>
+                            )}
+                            {/* Tooltip */}
+                            <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                              Grab Ebook
+                            </span>
+                          </button>
+
+                          {/* Interactive Search Ebook Button */}
+                          <button
+                            onClick={handleInteractiveSearchEbook}
+                            className="group relative inline-flex items-center justify-center p-3 rounded-lg border-2 transition-colors"
+                            style={{
+                              borderColor: '#f16f19',
+                              backgroundColor: 'rgba(241, 111, 25, 0.1)',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = 'rgba(241, 111, 25, 0.2)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'rgba(241, 111, 25, 0.1)';
+                            }}
+                            title="Search Ebook Sources"
+                            aria-label="Search Ebook Sources"
+                          >
+                            <svg
+                              className="w-6 h-6"
+                              style={{ color: '#f16f19' }}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                              />
+                            </svg>
+                            {/* Tooltip */}
+                            <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                              Search Ebook Sources
+                            </span>
+                          </button>
+                        </>
+                      )}
+
+                      {/* Show ebook request status if one exists */}
+                      {ebookStatus?.hasActiveEbookRequest && (
+                        <div
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-sm font-medium"
+                          style={{
+                            borderColor: '#f16f19',
+                            backgroundColor: 'rgba(241, 111, 25, 0.1)',
+                            color: '#f16f19',
+                          }}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                            />
+                          </svg>
+                          <span>
+                            Ebook: {ebookStatus.existingEbookStatus === 'awaiting_approval'
+                              ? 'Pending Approval'
+                              : ebookStatus.existingEbookStatus === 'available' || ebookStatus.existingEbookStatus === 'downloaded'
+                                ? 'Available'
+                                : 'In Progress'}
+                          </span>
+                        </div>
+                      )}
+                    </>
                   );
                 }
 
@@ -542,7 +713,7 @@ export function AudiobookDetailsModal({
             {showToast && (
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
                 <p className="text-green-800 dark:text-green-200 text-center font-medium">
-                  ✓ Request created successfully!
+                  ✓ {toastMessage}
                 </p>
               </div>
             )}
@@ -555,7 +726,7 @@ export function AudiobookDetailsModal({
   return (
     <>
       {createPortal(modalContent, document.body)}
-      {/* Interactive Search Modal - render with higher z-index to appear above details modal */}
+      {/* Interactive Search Modal (Audiobook) - render with higher z-index to appear above details modal */}
       {showInteractiveSearch && audiobook && createPortal(
         <div className="fixed inset-0 z-[60]" style={{ pointerEvents: 'none' }}>
           <div style={{ pointerEvents: 'auto' }}>
@@ -568,6 +739,25 @@ export function AudiobookDetailsModal({
                 author: audiobook.author,
               }}
               fullAudiobook={audiobook}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
+      {/* Interactive Search Modal (Ebook) - render with higher z-index to appear above details modal */}
+      {showInteractiveSearchEbook && audiobook && createPortal(
+        <div className="fixed inset-0 z-[60]" style={{ pointerEvents: 'none' }}>
+          <div style={{ pointerEvents: 'auto' }}>
+            <InteractiveTorrentSearchModal
+              isOpen={showInteractiveSearchEbook}
+              onClose={handleInteractiveSearchEbookClose}
+              onSuccess={handleInteractiveSearchEbookSuccess}
+              asin={asin}
+              audiobook={{
+                title: audiobook.title,
+                author: audiobook.author,
+              }}
+              searchMode="ebook"
             />
           </div>
         </div>,

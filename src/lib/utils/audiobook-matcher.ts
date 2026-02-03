@@ -168,7 +168,7 @@ export async function enrichAudiobooksWithMatches(
   // Always enrich with request status (check ANY user's requests)
   const asins = audiobooks.map(book => book.asin);
 
-  // Get all audiobook records for these ASINs with ALL requests
+  // Get all audiobook records for these ASINs with ALL audiobook requests (not ebook requests)
   const audiobookRecords = await prisma.audiobook.findMany({
     where: {
       audibleAsin: { in: asins },
@@ -179,6 +179,7 @@ export async function enrichAudiobooksWithMatches(
       requests: {
         where: {
           deletedAt: null, // Only include active (non-deleted) requests
+          type: 'audiobook', // Only check audiobook requests, not ebook requests
         },
         select: {
           id: true,

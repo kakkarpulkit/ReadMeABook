@@ -76,26 +76,67 @@ export async function POST(
         // Update request based on action
         if (action === 'approve') {
           const jobQueue = getJobQueueService();
+          const isEbookRequest = existingRequest.type === 'ebook';
 
           // Check if request has a pre-selected torrent (from interactive search)
           if (existingRequest.selectedTorrent) {
+            const selectedTorrent = existingRequest.selectedTorrent as any;
+
             // User pre-selected a specific torrent - download that torrent directly
             logger.info(`Request ${id} has pre-selected torrent, starting download`, {
               requestId: id,
               userId: existingRequest.userId,
               adminId: req.user.sub,
+              type: existingRequest.type,
+              source: selectedTorrent.source,
             });
 
-            // Trigger download job with pre-selected torrent
-            await jobQueue.addDownloadJob(
-              existingRequest.id,
-              {
-                id: existingRequest.audiobook.id,
-                title: existingRequest.audiobook.title,
-                author: existingRequest.audiobook.author,
-              },
-              existingRequest.selectedTorrent as any
-            );
+            // Handle ebook requests with Anna's Archive source differently
+            if (isEbookRequest && selectedTorrent.source === 'annas_archive') {
+              // Create download history record for Anna's Archive
+              const downloadHistory = await prisma.downloadHistory.create({
+                data: {
+                  requestId: existingRequest.id,
+                  indexerName: "Anna's Archive",
+                  torrentName: `${existingRequest.audiobook.title} - ${existingRequest.audiobook.author}.${selectedTorrent.format || 'epub'}`,
+                  torrentSizeBytes: null,
+                  qualityScore: selectedTorrent.score || 100,
+                  selected: true,
+                  downloadClient: 'direct',
+                  downloadStatus: 'queued',
+                },
+              });
+
+              // Store all download URLs for retry purposes
+              if (selectedTorrent.downloadUrls && selectedTorrent.downloadUrls.length > 0) {
+                await prisma.downloadHistory.update({
+                  where: { id: downloadHistory.id },
+                  data: {
+                    torrentUrl: JSON.stringify(selectedTorrent.downloadUrls),
+                  },
+                });
+              }
+
+              // Trigger direct download job for Anna's Archive
+              await jobQueue.addStartDirectDownloadJob(
+                existingRequest.id,
+                downloadHistory.id,
+                selectedTorrent.downloadUrl,
+                `${existingRequest.audiobook.title} - ${existingRequest.audiobook.author}.${selectedTorrent.format || 'epub'}`,
+                undefined
+              );
+            } else {
+              // Trigger download job with pre-selected torrent (audiobook or indexer ebook)
+              await jobQueue.addDownloadJob(
+                existingRequest.id,
+                {
+                  id: existingRequest.audiobook.id,
+                  title: existingRequest.audiobook.title,
+                  author: existingRequest.audiobook.author,
+                },
+                selectedTorrent
+              );
+            }
 
             // Update status to 'downloading' and clear selectedTorrent
             const updatedRequest = await prisma.request.update({
@@ -119,7 +160,7 @@ export async function POST(
             await jobQueue.addNotificationJob(
               'request_approved',
               updatedRequest.id,
-              existingRequest.audiobook.title,
+              isEbookRequest ? `${existingRequest.audiobook.title} (Ebook)` : existingRequest.audiobook.title,
               existingRequest.audiobook.author,
               existingRequest.user.plexUsername || 'Unknown User'
             ).catch((error) => {
@@ -131,6 +172,7 @@ export async function POST(
               userId: updatedRequest.userId,
               audiobookTitle: existingRequest.audiobook.title,
               adminId: req.user.sub,
+              type: existingRequest.type,
             });
 
             return NextResponse.json({
@@ -144,6 +186,7 @@ export async function POST(
               requestId: id,
               userId: existingRequest.userId,
               adminId: req.user.sub,
+              type: existingRequest.type,
             });
 
             const updatedRequest = await prisma.request.update({
@@ -160,19 +203,28 @@ export async function POST(
               },
             });
 
-            // Trigger search job
-            await jobQueue.addSearchJob(updatedRequest.id, {
-              id: updatedRequest.audiobook.id,
-              title: updatedRequest.audiobook.title,
-              author: updatedRequest.audiobook.author,
-              asin: updatedRequest.audiobook.audibleAsin || undefined,
-            });
+            // Trigger appropriate search job based on request type
+            if (isEbookRequest) {
+              await jobQueue.addSearchEbookJob(updatedRequest.id, {
+                id: updatedRequest.audiobook.id,
+                title: updatedRequest.audiobook.title,
+                author: updatedRequest.audiobook.author,
+                asin: updatedRequest.audiobook.audibleAsin || undefined,
+              });
+            } else {
+              await jobQueue.addSearchJob(updatedRequest.id, {
+                id: updatedRequest.audiobook.id,
+                title: updatedRequest.audiobook.title,
+                author: updatedRequest.audiobook.author,
+                asin: updatedRequest.audiobook.audibleAsin || undefined,
+              });
+            }
 
             // Send notification for manual approval
             await jobQueue.addNotificationJob(
               'request_approved',
               updatedRequest.id,
-              updatedRequest.audiobook.title,
+              isEbookRequest ? `${updatedRequest.audiobook.title} (Ebook)` : updatedRequest.audiobook.title,
               updatedRequest.audiobook.author,
               updatedRequest.user.plexUsername || 'Unknown User'
             ).catch((error) => {
@@ -184,11 +236,14 @@ export async function POST(
               userId: updatedRequest.userId,
               audiobookTitle: updatedRequest.audiobook.title,
               adminId: req.user.sub,
+              type: existingRequest.type,
             });
 
             return NextResponse.json({
               success: true,
-              message: 'Request approved and search job triggered',
+              message: isEbookRequest
+                ? 'Ebook request approved and ebook search job triggered'
+                : 'Request approved and search job triggered',
               request: updatedRequest,
             });
           }

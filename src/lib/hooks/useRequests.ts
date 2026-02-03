@@ -482,3 +482,162 @@ export function useSelectEbook() {
 
   return { selectEbook, isLoading, error };
 }
+
+// ==================== ASIN-based Ebook Hooks ====================
+// These hooks are used for requesting ebooks from the audiobook details modal
+// where we only have an ASIN, not an existing request ID
+
+export interface EbookStatus {
+  ebookSourcesEnabled: boolean;
+  hasActiveEbookRequest: boolean;
+  existingEbookStatus: string | null;
+  existingEbookRequestId: string | null;
+}
+
+export function useEbookStatus(asin: string | null) {
+  const { accessToken } = useAuth();
+
+  const endpoint = accessToken && asin ? `/api/audiobooks/${asin}/ebook-status` : null;
+
+  const { data, error, isLoading, mutate: revalidate } = useSWR<EbookStatus>(
+    endpoint,
+    fetcher,
+    {
+      refreshInterval: 10000, // Refresh every 10 seconds
+    }
+  );
+
+  return {
+    ebookStatus: data || null,
+    isLoading,
+    error,
+    revalidate,
+  };
+}
+
+export function useFetchEbookByAsin() {
+  const { accessToken } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchEbook = async (asin: string) => {
+    if (!accessToken) {
+      throw new Error('Not authenticated');
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetchWithAuth(`/api/audiobooks/${asin}/fetch-ebook`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Failed to request ebook');
+      }
+
+      // Revalidate requests and ebook status
+      mutate((key) => typeof key === 'string' && key.includes('/api/requests'));
+      mutate((key) => typeof key === 'string' && key.includes('/api/audiobooks'));
+
+      return data;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(message);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return { fetchEbook, isLoading, error };
+}
+
+export function useInteractiveSearchEbookByAsin() {
+  const { accessToken } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const searchEbooks = async (asin: string, customTitle?: string) => {
+    if (!accessToken) {
+      throw new Error('Not authenticated');
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetchWithAuth(`/api/audiobooks/${asin}/interactive-search-ebook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: customTitle ? JSON.stringify({ customTitle }) : undefined,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Failed to search for ebooks');
+      }
+
+      return data.results || [];
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(message);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return { searchEbooks, isLoading, error };
+}
+
+export function useSelectEbookByAsin() {
+  const { accessToken } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const selectEbook = async (asin: string, ebook: any) => {
+    if (!accessToken) {
+      throw new Error('Not authenticated');
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetchWithAuth(`/api/audiobooks/${asin}/select-ebook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ebook }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Failed to download ebook');
+      }
+
+      // Revalidate requests and ebook status
+      mutate((key) => typeof key === 'string' && key.includes('/api/requests'));
+      mutate((key) => typeof key === 'string' && key.includes('/api/audiobooks'));
+
+      return data;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(message);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return { selectEbook, isLoading, error };
+}

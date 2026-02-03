@@ -18,6 +18,7 @@ import { useState } from 'react';
 interface PendingApprovalRequest {
   id: string;
   createdAt: string;
+  type: 'audiobook' | 'ebook';
   audiobook: {
     title: string;
     author: string;
@@ -146,9 +147,23 @@ function PendingApprovalSection({ requests }: { requests: PendingApprovalRequest
 
                   {/* Book Info */}
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
-                      {request.audiobook.title}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
+                        {request.audiobook.title}
+                      </h3>
+                      {request.type === 'ebook' && (
+                        <span
+                          className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0"
+                          style={{
+                            backgroundColor: 'rgba(241, 111, 25, 0.15)',
+                            color: '#f16f19',
+                            border: '1px solid rgba(241, 111, 25, 0.3)',
+                          }}
+                        >
+                          Ebook
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
                       {request.audiobook.author}
                     </p>

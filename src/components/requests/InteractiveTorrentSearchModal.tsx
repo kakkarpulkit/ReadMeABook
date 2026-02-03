@@ -21,6 +21,8 @@ import {
   useRequestWithTorrent,
   useInteractiveSearchEbook,
   useSelectEbook,
+  useInteractiveSearchEbookByAsin,
+  useSelectEbookByAsin,
 } from '@/lib/hooks/useRequests';
 import { Audiobook } from '@/lib/hooks/useAudiobooks';
 
@@ -28,6 +30,7 @@ interface InteractiveTorrentSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   requestId?: string; // Optional - only provided when called from existing request
+  asin?: string; // Optional - ASIN for ebook mode when no request exists
   audiobook: {
     title: string;
     author: string;
@@ -41,6 +44,7 @@ export function InteractiveTorrentSearchModal({
   isOpen,
   onClose,
   requestId,
+  asin,
   audiobook,
   fullAudiobook,
   onSuccess,
@@ -54,9 +58,13 @@ export function InteractiveTorrentSearchModal({
   const { searchTorrents: searchByAudiobook, isLoading: isSearchingByAudiobook, error: searchByAudiobookError } = useSearchTorrents();
   const { requestWithTorrent, isLoading: isRequestingWithTorrent, error: requestWithTorrentError } = useRequestWithTorrent();
 
-  // Hooks for ebook flow
+  // Hooks for ebook flow (request ID-based - admin)
   const { searchEbooks, isLoading: isSearchingEbooks, error: searchEbooksError } = useInteractiveSearchEbook();
   const { selectEbook, isLoading: isSelectingEbook, error: selectEbookError } = useSelectEbook();
+
+  // Hooks for ebook flow (ASIN-based - user)
+  const { searchEbooks: searchEbooksByAsin, isLoading: isSearchingEbooksByAsin, error: searchEbooksByAsinError } = useInteractiveSearchEbookByAsin();
+  const { selectEbook: selectEbookByAsin, isLoading: isSelectingEbookByAsin, error: selectEbookByAsinError } = useSelectEbookByAsin();
 
   const [results, setResults] = useState<(RankedTorrent & { qualityScore?: number; source?: string })[]>([]);
   const [confirmTorrent, setConfirmTorrent] = useState<TorrentResult | null>(null);
@@ -65,16 +73,18 @@ export function InteractiveTorrentSearchModal({
   // Determine which mode we're in
   const isEbookMode = searchMode === 'ebook';
   const hasRequestId = !!requestId;
+  const hasAsin = !!asin;
+  const useAsinMode = isEbookMode && hasAsin && !hasRequestId;
 
   // Loading/error state based on mode
   const isSearching = isEbookMode
-    ? isSearchingEbooks
+    ? (useAsinMode ? isSearchingEbooksByAsin : isSearchingEbooks)
     : (hasRequestId ? isSearchingByRequest : isSearchingByAudiobook);
   const isDownloading = isEbookMode
-    ? isSelectingEbook
+    ? (useAsinMode ? isSelectingEbookByAsin : isSelectingEbook)
     : (hasRequestId ? isSelectingTorrent : isRequestingWithTorrent);
   const error = isEbookMode
-    ? (searchEbooksError || selectEbookError)
+    ? (useAsinMode ? (searchEbooksByAsinError || selectEbookByAsinError) : (searchEbooksError || selectEbookError))
     : (hasRequestId
         ? (searchByRequestError || selectTorrentError)
         : (searchByAudiobookError || requestWithTorrentError));
@@ -100,20 +110,25 @@ export function InteractiveTorrentSearchModal({
       let data;
       if (isEbookMode) {
         // Ebook mode: search Anna's Archive + indexers
-        if (!requestId) {
-          console.error('Ebook search requires a requestId');
+        const customTitle = searchTitle !== audiobook.title ? searchTitle : undefined;
+        if (useAsinMode && asin) {
+          // ASIN-based ebook search (user flow from details modal)
+          data = await searchEbooksByAsin(asin, customTitle);
+        } else if (requestId) {
+          // Request ID-based ebook search (admin flow)
+          data = await searchEbooks(requestId, customTitle);
+        } else {
+          console.error('Ebook search requires either requestId or asin');
           return;
         }
-        const customTitle = searchTitle !== audiobook.title ? searchTitle : undefined;
-        data = await searchEbooks(requestId, customTitle);
       } else if (hasRequestId) {
         // Existing audiobook flow: search by requestId with optional custom title
         const customTitle = searchTitle !== audiobook.title ? searchTitle : undefined;
         data = await searchByRequestId(requestId, customTitle);
       } else {
         // New audiobook flow: search by custom title + original author + optional ASIN for size scoring
-        const asin = fullAudiobook?.asin;
-        data = await searchByAudiobook(searchTitle, audiobook.author, asin);
+        const audiobookAsin = fullAudiobook?.asin;
+        data = await searchByAudiobook(searchTitle, audiobook.author, audiobookAsin);
       }
       setResults(data || []);
     } catch (err) {
@@ -137,11 +152,16 @@ export function InteractiveTorrentSearchModal({
 
     try {
       if (isEbookMode) {
-        // Ebook flow: select ebook for existing audiobook request
-        if (!requestId) {
-          throw new Error('Request ID required for ebook selection');
+        // Ebook flow
+        if (useAsinMode && asin) {
+          // ASIN-based ebook selection (user flow from details modal)
+          await selectEbookByAsin(asin, confirmTorrent);
+        } else if (requestId) {
+          // Request ID-based ebook selection (admin flow)
+          await selectEbook(requestId, confirmTorrent);
+        } else {
+          throw new Error('Request ID or ASIN required for ebook selection');
         }
-        await selectEbook(requestId, confirmTorrent);
       } else if (hasRequestId) {
         // Existing audiobook flow: select torrent for existing request
         await selectTorrent(requestId, confirmTorrent);
