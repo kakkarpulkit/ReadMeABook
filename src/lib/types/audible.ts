@@ -3,7 +3,7 @@
  * Documentation: documentation/integrations/audible.md
  */
 
-export type AudibleRegion = 'us' | 'ca' | 'uk' | 'au' | 'in';
+export type AudibleRegion = 'us' | 'ca' | 'uk' | 'au' | 'in' | 'de';
 
 export interface AudibleRegionConfig {
   code: AudibleRegion;
@@ -42,6 +42,12 @@ export const AUDIBLE_REGIONS: Record<AudibleRegion, AudibleRegionConfig> = {
     name: 'India',
     baseUrl: 'https://www.audible.in',
     audnexusParam: 'in',
+  },
+  de: {
+    code: 'de',
+    name: 'Germany',
+    baseUrl: 'https://www.audible.de',
+    audnexusParam: 'de',
   },
 };
 

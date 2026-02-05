@@ -118,6 +118,7 @@ export function BackendSelectionStep({
           <option value="uk">United Kingdom</option>
           <option value="au">Australia</option>
           <option value="in">India</option>
+          <option value="de">Germany</option>
         </select>
         <p className="text-sm text-gray-600 dark:text-gray-400">
           Select the Audible region that matches your metadata engine (Audnexus/Audible Agent)

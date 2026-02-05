@@ -12,7 +12,7 @@ import { RMABLogger } from '@/lib/utils/logger';
 
 const logger = RMABLogger.create('API.Admin.Settings.Audible');
 
-const VALID_REGIONS = ['us', 'ca', 'uk', 'au', 'in'];
+const VALID_REGIONS = ['us', 'ca', 'uk', 'au', 'in', 'de'];
 
 export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -24,7 +24,7 @@ export async function PUT(request: NextRequest) {
         if (!region || !VALID_REGIONS.includes(region)) {
           logger.warn('Invalid region provided', { region });
           return NextResponse.json(
-            { success: false, error: 'Invalid Audible region. Must be one of: us, ca, uk, au, in' },
+            { success: false, error: 'Invalid Audible region. Must be one of: us, ca, uk, au, in, de' },
             { status: 400 }
           );
         }
