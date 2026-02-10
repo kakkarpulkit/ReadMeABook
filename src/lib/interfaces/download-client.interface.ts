@@ -177,4 +177,22 @@ export interface IDownloadClient {
    * @param id - Download ID
    */
   postProcess(id: string): Promise<void>;
+
+  /**
+   * Get available categories/labels from the download client.
+   * - qBittorrent: Returns configured category names
+   * - Transmission: Returns empty array (uses free-form labels)
+   * - Usenet clients: Returns empty array (feature scoped to torrent clients)
+   */
+  getCategories(): Promise<string[]>;
+
+  /**
+   * Set the category/label for a download.
+   * - qBittorrent: Sets torrent category
+   * - Transmission: Sets torrent label
+   * - Usenet clients: No-op
+   * @param id - Download ID
+   * @param category - Category/label name to assign
+   */
+  setCategory(id: string, category: string): Promise<void>;
 }

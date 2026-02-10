@@ -730,6 +730,26 @@ export class QBittorrentService implements IDownloadClient {
   }
 
   /**
+   * Get all configured categories from qBittorrent
+   */
+  async getCategories(): Promise<string[]> {
+    if (!this.cookie) {
+      await this.login();
+    }
+
+    try {
+      const response = await this.client.get('/torrents/categories', {
+        headers: { Cookie: this.cookie },
+      });
+
+      return Object.keys(response.data || {});
+    } catch (error) {
+      logger.error('Failed to get categories', { error: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
+  }
+
+  /**
    * Set category for torrent
    */
   async setCategory(hash: string, category: string): Promise<void> {

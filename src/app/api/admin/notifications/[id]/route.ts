@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
-import { getNotificationService, NotificationBackendType } from '@/lib/services/notification.service';
+import { getNotificationService } from '@/lib/services/notification';
 import { RMABLogger } from '@/lib/utils/logger';
 import { z } from 'zod';
 
@@ -50,7 +50,7 @@ export async function GET(
           success: true,
           backend: {
             ...backend,
-            config: notificationService.maskConfig(backend.type as NotificationBackendType, backend.config),
+            config: notificationService.maskConfig(backend.type, backend.config),
           },
         });
       } catch (error) {
@@ -114,7 +114,7 @@ export async function PUT(
           });
 
           // Encrypt new/changed values
-          finalConfig = notificationService.encryptConfig(existing.type as NotificationBackendType, updatedConfig);
+          finalConfig = notificationService.encryptConfig(existing.type, updatedConfig);
         }
 
         // Update backend
@@ -139,7 +139,7 @@ export async function PUT(
           success: true,
           backend: {
             ...updated,
-            config: notificationService.maskConfig(updated.type as NotificationBackendType, updated.config),
+            config: notificationService.maskConfig(updated.type, updated.config),
           },
         });
       } catch (error) {

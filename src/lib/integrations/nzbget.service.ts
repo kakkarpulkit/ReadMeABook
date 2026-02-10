@@ -406,6 +406,16 @@ export class NZBGetService implements IDownloadClient {
     }
   }
 
+  /** Not applicable for usenet clients */
+  async getCategories(): Promise<string[]> {
+    return [];
+  }
+
+  /** Not applicable for usenet clients */
+  async setCategory(_id: string, _category: string): Promise<void> {
+    // No-op: post-import category is scoped to torrent clients
+  }
+
   // =========================================================================
   // Category Management
   // =========================================================================

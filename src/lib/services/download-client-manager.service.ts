@@ -35,6 +35,7 @@ export interface DownloadClientConfig {
   localPath?: string;
   category?: string; // Default: 'readmeabook'
   customPath?: string; // Relative sub-path appended to download_dir
+  postImportCategory?: string; // Category to assign after import (torrent clients only)
 }
 
 

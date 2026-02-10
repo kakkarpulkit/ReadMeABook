@@ -86,7 +86,6 @@ export async function POST(request: NextRequest) {
 
       // Search Prowlarr for each group and combine results
       const prowlarr = await getProwlarrService();
-      const searchQuery = title; // Title only - cast wide net
       const allResults = [];
 
       for (let i = 0; i < groups.length; i++) {
@@ -94,7 +93,7 @@ export async function POST(request: NextRequest) {
         logger.debug(`Searching group ${i + 1}/${groups.length}: ${getGroupDescription(group)}`);
 
         try {
-          const groupResults = await prowlarr.search(searchQuery, {
+          const groupResults = await prowlarr.searchWithVariations(title, author, {
             categories: group.categories,
             indexerIds: group.indexerIds,
             maxResults: 100, // Limit per group

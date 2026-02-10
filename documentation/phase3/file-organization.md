@@ -208,7 +208,7 @@ async function organize(
 
 ## Fixed Issues ✅
 
-**1. EPERM errors** - Fixed with `fs.readFile/writeFile` instead of `copyFile`
+**1. EPERM errors** - Fixed with stream-based copy (`pipeline` + `createReadStream`/`createWriteStream`) instead of `fs.copyFile()` which uses `copy_file_range()` — a syscall that returns EPERM on cross-export NFS4 and some FUSE mounts
 **2. Immediate deletion** - Changed to copy-only, scheduled cleanup after seeding
 **3. Files moved not copied** - Now copies to support seeding
 **4. Single file downloads** - Now supports files directly in downloads folder (not just directories)

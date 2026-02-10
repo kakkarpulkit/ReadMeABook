@@ -6,14 +6,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
-import { getNotificationService, NotificationBackendType } from '@/lib/services/notification.service';
+import { getNotificationService, getRegisteredProviderTypes } from '@/lib/services/notification';
 import { RMABLogger } from '@/lib/utils/logger';
 import { z } from 'zod';
 
 const logger = RMABLogger.create('API.Admin.Notifications');
 
 const CreateBackendSchema = z.object({
-  type: z.enum(['discord', 'pushover', 'email', 'slack', 'telegram', 'webhook']),
+  type: z.string().refine((val) => getRegisteredProviderTypes().includes(val), { message: 'Unsupported notification provider type' }),
   name: z.string().min(1),
   config: z.record(z.any()),
   events: z.array(z.enum(['request_pending_approval', 'request_approved', 'request_available', 'request_error'])).min(1),
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         // Mask sensitive config values
         const maskedBackends = backends.map((backend) => ({
           ...backend,
-          config: notificationService.maskConfig(backend.type as NotificationBackendType, backend.config),
+          config: notificationService.maskConfig(backend.type, backend.config),
         }));
 
         return NextResponse.json({

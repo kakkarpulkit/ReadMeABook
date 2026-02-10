@@ -11,7 +11,6 @@ const fsMock = vi.hoisted(() => ({
   access: vi.fn(),
   stat: vi.fn(),
   mkdir: vi.fn(),
-  copyFile: vi.fn(),
   chmod: vi.fn(),
   unlink: vi.fn(),
   writeFile: vi.fn(),
@@ -71,10 +70,16 @@ const ebookMock = vi.hoisted(() => ({
   downloadEbook: vi.fn(),
 }));
 
+const copyFileMock = vi.hoisted(() => ({
+  copyFile: vi.fn(),
+}));
+
 vi.mock('fs/promises', () => ({
   default: fsMock,
   ...fsMock,
 }));
+
+vi.mock('@/lib/utils/copy-file', () => copyFileMock);
 
 vi.mock('axios', () => ({
   default: axiosMock,
@@ -109,7 +114,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
+    copyFileMock.copyFile.mockResolvedValue(undefined);
     fsMock.chmod.mockResolvedValue(undefined);
 
     const organizer = new FileOrganizer('/media', '/tmp');
@@ -174,7 +179,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
+    copyFileMock.copyFile.mockResolvedValue(undefined);
     fsMock.chmod.mockResolvedValue(undefined);
 
     const organizer = new FileOrganizer('/media', '/tmp');
@@ -216,7 +221,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
+    copyFileMock.copyFile.mockResolvedValue(undefined);
     fsMock.chmod.mockResolvedValue(undefined);
     fsMock.unlink.mockResolvedValue(undefined);
 
@@ -235,7 +240,7 @@ describe('file organizer', () => {
     const expectedDir = path.join('/media', 'Author', 'Book');
     expect(result.success).toBe(true);
     expect(result.targetPath).toBe(expectedDir);
-    expect(fsMock.copyFile).toHaveBeenCalledWith('/tmp/tagged.m4b', path.join(expectedDir, 'book.m4b'));
+    expect(copyFileMock.copyFile).toHaveBeenCalledWith('/tmp/tagged.m4b', path.join(expectedDir, 'book.m4b'));
     expect(fsMock.unlink).toHaveBeenCalledWith('/tmp/tagged.m4b');
   });
 
@@ -261,7 +266,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
+    copyFileMock.copyFile.mockResolvedValue(undefined);
     fsMock.chmod.mockResolvedValue(undefined);
 
     const result = await organizer.organize('/downloads/book', {
@@ -272,7 +277,7 @@ describe('file organizer', () => {
     expect(result.success).toBe(true);
     expect(result.errors).toContain('Metadata tagging skipped: ffmpeg not available');
     expect(metadataMock.tagMultipleFiles).not.toHaveBeenCalled();
-    expect(fsMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
+    expect(copyFileMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
   });
 
   it('downloads remote cover art when no local cover exists', async () => {
@@ -294,7 +299,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
+    copyFileMock.copyFile.mockResolvedValue(undefined);
     fsMock.chmod.mockResolvedValue(undefined);
     fsMock.writeFile.mockResolvedValue(undefined);
 
@@ -316,7 +321,7 @@ describe('file organizer', () => {
     // NOTE: Ebook downloads are now handled as first-class requests through the job queue
     // The file organizer no longer downloads ebooks inline
     expect(ebookMock.downloadEbook).not.toHaveBeenCalled();
-    expect(fsMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
+    expect(copyFileMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
     expect(result.filesMovedCount).toBe(1);
   });
 
@@ -340,7 +345,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
+    copyFileMock.copyFile.mockResolvedValue(undefined);
     fsMock.chmod.mockResolvedValue(undefined);
     axiosMock.get.mockRejectedValue(new Error('cover failed'));
 
@@ -352,7 +357,7 @@ describe('file organizer', () => {
 
     expect(result.success).toBe(true);
     expect(result.errors.join(' ')).toContain('Failed to download cover art');
-    expect(fsMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
+    expect(copyFileMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
   });
 
   it('continues when chapter analysis returns no valid chapters', async () => {
@@ -378,7 +383,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
+    copyFileMock.copyFile.mockResolvedValue(undefined);
     fsMock.chmod.mockResolvedValue(undefined);
 
     const result = await organizer.organize('/downloads/book', {
@@ -415,7 +420,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
+    copyFileMock.copyFile.mockResolvedValue(undefined);
     fsMock.chmod.mockResolvedValue(undefined);
     fsMock.unlink.mockResolvedValue(undefined);
 
@@ -502,7 +507,7 @@ describe('file organizer', () => {
     expect(result.audioFiles).toEqual([]);
     expect(result.errors.join(' ')).toContain('Source file not found');
     expect(result.errors.join(' ')).toContain('No audio files were successfully copied');
-    expect(fsMock.copyFile).not.toHaveBeenCalled();
+    expect(copyFileMock.copyFile).not.toHaveBeenCalled();
   });
 
   it('skips copying when target files already exist', async () => {
@@ -535,7 +540,7 @@ describe('file organizer', () => {
     expect(result.success).toBe(true);
     expect(result.audioFiles).toEqual([targetPath]);
     expect(result.filesMovedCount).toBe(0);
-    expect(fsMock.copyFile).not.toHaveBeenCalled();
+    expect(copyFileMock.copyFile).not.toHaveBeenCalled();
   });
 
   it('continues when metadata tagging throws', async () => {
@@ -557,7 +562,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
+    copyFileMock.copyFile.mockResolvedValue(undefined);
     fsMock.chmod.mockResolvedValue(undefined);
 
     const result = await organizer.organize('/downloads/book', {
@@ -567,7 +572,7 @@ describe('file organizer', () => {
 
     expect(result.success).toBe(true);
     expect(result.errors.join(' ')).toContain('Metadata tagging failed');
-    expect(fsMock.copyFile).toHaveBeenCalled();
+    expect(copyFileMock.copyFile).toHaveBeenCalled();
   });
 
   it('validates paths and reports multiple issues', async () => {
@@ -668,7 +673,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockRejectedValue(
+    copyFileMock.copyFile.mockRejectedValue(
       Object.assign(new Error('EPERM: operation not permitted, copyfile'), { code: 'EPERM' })
     );
 
@@ -705,7 +710,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockImplementation(async (src: string, dest: string) => {
+    copyFileMock.copyFile.mockImplementation(async (src: string, dest: string) => {
       // Tagged file copy fails with EPERM
       if (path.normalize(src) === path.normalize(taggedPath)) {
         throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
@@ -736,7 +741,7 @@ describe('file organizer', () => {
     // Tagged temp file should be cleaned up
     expect(fsMock.unlink).toHaveBeenCalledWith(taggedPath);
     // Fallback copy should use the original source
-    expect(fsMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
+    expect(copyFileMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
     // Should record that tagged copy failed
     expect(result.errors.join(' ')).toContain('Tagged copy failed');
     expect(result.errors.join(' ')).toContain('without metadata tags');
@@ -760,7 +765,7 @@ describe('file organizer', () => {
     });
     fsMock.mkdir.mockResolvedValue(undefined);
     // Both tagged and original copies fail
-    fsMock.copyFile.mockRejectedValue(
+    copyFileMock.copyFile.mockRejectedValue(
       Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' })
     );
     fsMock.unlink.mockResolvedValue(undefined);
@@ -808,7 +813,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockImplementation(async (src: string) => {
+    copyFileMock.copyFile.mockImplementation(async (src: string) => {
       // First file succeeds, second fails
       if (path.normalize(src) === path.normalize(source2)) {
         throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
@@ -847,7 +852,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
+    copyFileMock.copyFile.mockResolvedValue(undefined);
     fsMock.chmod.mockResolvedValue(undefined);
     fsMock.writeFile.mockResolvedValue(undefined);
     axiosMock.get.mockResolvedValue({ data: Buffer.from('cover') });
@@ -881,7 +886,7 @@ describe('file organizer', () => {
       throw new Error('missing');
     });
     fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockRejectedValue(
+    copyFileMock.copyFile.mockRejectedValue(
       Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' })
     );
     fsMock.writeFile.mockResolvedValue(undefined);

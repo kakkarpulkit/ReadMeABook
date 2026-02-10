@@ -825,6 +825,16 @@ export class SABnzbdService implements IDownloadClient {
     await this.archiveCompletedNZB(id);
   }
 
+  /** Not applicable for usenet clients */
+  async getCategories(): Promise<string[]> {
+    return [];
+  }
+
+  /** Not applicable for usenet clients */
+  async setCategory(_id: string, _category: string): Promise<void> {
+    // No-op: post-import category is scoped to torrent clients
+  }
+
   /**
    * Map NZBInfo to the unified DownloadInfo format.
    */

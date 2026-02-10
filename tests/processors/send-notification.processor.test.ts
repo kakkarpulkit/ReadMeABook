@@ -9,7 +9,7 @@ const notificationServiceMock = vi.hoisted(() => ({
   sendNotification: vi.fn(),
 }));
 
-vi.mock('@/lib/services/notification.service', () => ({
+vi.mock('@/lib/services/notification', () => ({
   getNotificationService: () => notificationServiceMock,
 }));
 

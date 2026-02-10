@@ -441,6 +441,29 @@ export class TransmissionService implements IDownloadClient {
     // No-op: torrents are managed by the seeding cleanup scheduler
   }
 
+  /**
+   * Get available categories/labels.
+   * Transmission uses free-form labels — no predefined list to fetch.
+   */
+  async getCategories(): Promise<string[]> {
+    return [];
+  }
+
+  /**
+   * Set the label for a torrent.
+   * Uses the torrent-set RPC method to replace the labels array.
+   */
+  async setCategory(id: string, category: string): Promise<void> {
+    try {
+      const torrent = await this.getTorrentByHash(id);
+      await this.rpc('torrent-set', { ids: [torrent.hashString], labels: [category] });
+      logger.info(`Set label for torrent ${id}: ${category}`);
+    } catch (error) {
+      logger.error('Failed to set label', { error: error instanceof Error ? error.message : String(error) });
+      throw new Error('Failed to set torrent label');
+    }
+  }
+
   // =========================================================================
   // Internal Helpers
   // =========================================================================

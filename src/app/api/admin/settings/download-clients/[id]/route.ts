@@ -38,6 +38,7 @@ export async function PUT(
           localPath,
           category,
           customPath,
+          postImportCategory,
         } = body;
 
         const config = await getConfigService();
@@ -76,6 +77,7 @@ export async function PUT(
           localPath: localPath !== undefined ? localPath : existingClient.localPath,
           category: category !== undefined ? category : existingClient.category,
           customPath: customPath !== undefined ? (customPath || undefined) : existingClient.customPath,
+          postImportCategory: postImportCategory !== undefined ? (postImportCategory || undefined) : existingClient.postImportCategory,
         };
 
         // Validate path mapping if enabled

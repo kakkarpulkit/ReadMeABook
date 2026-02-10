@@ -209,6 +209,55 @@ export class ProwlarrService {
   }
 
   /**
+   * Search with multiple query variations to increase coverage
+   * Fires 2 queries per call: "title author" and "title", then deduplicates by guid
+   */
+  async searchWithVariations(
+    title: string,
+    author: string,
+    filters?: SearchFilters
+  ): Promise<TorrentResult[]> {
+    const queries = [
+      `${title} ${author}`,
+      title,
+    ];
+
+    logger.info(`Searching with ${queries.length} query variations`, { queries });
+
+    const allResults: TorrentResult[] = [];
+
+    for (const query of queries) {
+      try {
+        const results = await this.search(query, filters);
+        logger.info(`Query "${query}" returned ${results.length} results`);
+        allResults.push(...results);
+      } catch (error) {
+        logger.error(`Query "${query}" failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        // Continue with other queries even if one fails
+      }
+    }
+
+    const deduplicated = this.deduplicateResults(allResults);
+    logger.info(`Multi-query search: ${allResults.length} total → ${deduplicated.length} after dedup (${allResults.length - deduplicated.length} duplicates removed)`);
+
+    return deduplicated;
+  }
+
+  /**
+   * Deduplicate results by guid, preserving order (first occurrence wins)
+   */
+  private deduplicateResults(results: TorrentResult[]): TorrentResult[] {
+    const seen = new Set<string>();
+    return results.filter(result => {
+      if (seen.has(result.guid)) {
+        return false;
+      }
+      seen.add(result.guid);
+      return true;
+    });
+  }
+
+  /**
    * Get list of configured indexers
    */
   async getIndexers(): Promise<Indexer[]> {

@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { DownloadClientManagement } from '@/components/admin/download-clients/DownloadClientManagement';
 import { DownloadClientType } from '@/lib/interfaces/download-client.interface';
@@ -24,6 +24,7 @@ interface DownloadClient {
   localPath?: string;
   category?: string;
   customPath?: string;
+  postImportCategory?: string;
 }
 
 interface DownloadClientStepProps {

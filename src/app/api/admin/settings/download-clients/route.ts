@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
           localPath,
           category,
           customPath,
+          postImportCategory,
         } = body;
 
         // Validate type
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
           localPath: localPath || undefined,
           category: category || 'readmeabook',
           customPath: customPath || undefined,
+          postImportCategory: postImportCategory || undefined,
         };
 
         // Test connection before saving

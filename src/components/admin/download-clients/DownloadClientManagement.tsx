@@ -26,6 +26,7 @@ interface DownloadClient {
   localPath?: string;
   category?: string;
   customPath?: string;
+  postImportCategory?: string;
 }
 
 interface DownloadClientManagementProps {
@@ -71,20 +72,6 @@ export function DownloadClientManagement({
       setResolvedDownloadDir(downloadDirProp);
     }
   }, [downloadDirProp]);
-
-  // Sync with parent when clients change
-  useEffect(() => {
-    if (onClientsChange) {
-      onClientsChange(clients);
-    }
-  }, [clients, onClientsChange]);
-
-  // Sync with initialClients prop changes (wizard mode)
-  useEffect(() => {
-    if (mode === 'wizard') {
-      setClients(initialClients);
-    }
-  }, [initialClients, mode]);
 
   const fetchClients = async () => {
     setLoading(true);
@@ -172,7 +159,9 @@ export function DownloadClientManagement({
         await fetchClients(); // Refresh list
       } else {
         // Local removal for wizard mode
-        setClients(clients.filter(c => c.id !== deleteConfirm.clientId));
+        const updated = clients.filter(c => c.id !== deleteConfirm.clientId);
+        setClients(updated);
+        onClientsChange?.(updated);
       }
 
       setDeleteConfirm({ isOpen: false });
@@ -219,15 +208,18 @@ export function DownloadClientManagement({
         }
       } else {
         // Local update for wizard mode
+        let updated: DownloadClient[];
         if (modalState.mode === 'add') {
           const newClient = {
             ...clientData,
             id: `temp-${Date.now()}`, // Temporary ID for wizard mode
           };
-          setClients([...clients, newClient]);
+          updated = [...clients, newClient];
         } else {
-          setClients(clients.map(c => (c.id === clientData.id ? { ...c, ...clientData } : c)));
+          updated = clients.map(c => (c.id === clientData.id ? { ...c, ...clientData } : c));
         }
+        setClients(updated);
+        onClientsChange?.(updated);
       }
 
       setModalState({ isOpen: false, mode: 'add' });

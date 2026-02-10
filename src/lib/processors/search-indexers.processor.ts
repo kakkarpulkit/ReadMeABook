@@ -75,10 +75,7 @@ export async function processSearchIndexers(payload: SearchIndexersPayload): Pro
     // Get Prowlarr service
     const prowlarr = await getProwlarrService();
 
-    // Build search query (title only - cast wide net, let ranking filter)
-    const searchQuery = audiobook.title;
-
-    logger.info(`Searching for: "${searchQuery}"`);
+    logger.info(`Searching for: "${audiobook.title}" by "${audiobook.author}"`);
 
     // Search Prowlarr for each group and combine results
     const allResults = [];
@@ -88,7 +85,7 @@ export async function processSearchIndexers(payload: SearchIndexersPayload): Pro
       logger.info(`Searching group ${i + 1}/${groups.length}: ${getGroupDescription(group)}`);
 
       try {
-        const groupResults = await prowlarr.search(searchQuery, {
+        const groupResults = await prowlarr.searchWithVariations(audiobook.title, audiobook.author, {
           categories: group.categories,
           indexerIds: group.indexerIds,
           minSeeders: 1, // Only torrents with at least 1 seeder

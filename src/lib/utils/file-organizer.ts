@@ -8,6 +8,7 @@ import path from 'path';
 import axios from 'axios';
 import { tagMultipleFiles, checkFfmpegAvailable } from './metadata-tagger';
 import { RMABLogger } from './logger';
+import { copyFile } from './copy-file';
 
 const moduleLogger = RMABLogger.create('FileOrganizer');
 import {
@@ -340,8 +341,8 @@ export class FileOrganizer {
 
         // Copy file (do NOT delete original - needed for seeding)
         try {
-          // Copy file using streaming (handles large files >2GB)
-          await fs.copyFile(sourcePath, targetFilePath);
+          // Copy file via streams (avoids copy_file_range EPERM on NFS/FUSE)
+          await copyFile(sourcePath, targetFilePath);
           // Set explicit permissions after copy
           await fs.chmod(targetFilePath, 0o644);
 
@@ -378,7 +379,7 @@ export class FileOrganizer {
             await logger?.info(`Attempting fallback copy of original (untagged) file: ${filename}`);
             try {
               await fs.access(originalSourcePath, fs.constants.R_OK);
-              await fs.copyFile(originalSourcePath, targetFilePath);
+              await copyFile(originalSourcePath, targetFilePath);
               await fs.chmod(targetFilePath, 0o644);
               result.audioFiles.push(targetFilePath);
               result.filesMovedCount++;
@@ -413,7 +414,7 @@ export class FileOrganizer {
 
         try {
           // Copy cover art (do NOT delete original)
-          await fs.copyFile(sourcePath, targetCoverPath);
+          await copyFile(sourcePath, targetCoverPath);
           await fs.chmod(targetCoverPath, 0o644);
           result.coverArtFile = targetCoverPath;
           result.filesMovedCount++;
@@ -608,7 +609,7 @@ export class FileOrganizer {
         const cachedPath = path.join('/app/cache/thumbnails', filename);
 
         // Copy from local cache instead of downloading
-        await fs.copyFile(cachedPath, targetPath);
+        await copyFile(cachedPath, targetPath);
         await fs.chmod(targetPath, 0o644);
         moduleLogger.debug(`Copied cover art from cache: ${filename}`);
       } else {
@@ -755,7 +756,7 @@ export class FileOrganizer {
       }
 
       // Copy ebook file (do NOT delete original - may need for seeding or retry)
-      await fs.copyFile(sourceFilePath, targetPath);
+      await copyFile(sourceFilePath, targetPath);
       await fs.chmod(targetPath, 0o644);
 
       await logger?.info(`Copied ebook: ${targetFilename}`);

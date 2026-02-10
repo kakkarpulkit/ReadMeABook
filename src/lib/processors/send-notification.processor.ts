@@ -6,7 +6,7 @@
  * to all enabled backends subscribed to the event.
  */
 
-import { getNotificationService } from '../services/notification.service';
+import { getNotificationService } from '../services/notification';
 import { RMABLogger } from '../utils/logger';
 
 export interface SendNotificationPayload {

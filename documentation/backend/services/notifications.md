@@ -1,14 +1,14 @@
 # Notification System
 
-**Status:** ✅ Implemented | Extensible notification system with Discord and Pushover support
+**Status:** ✅ Implemented | Extensible notification system with Discord, ntfy, and Pushover support
 
 ## Overview
 Sends notifications for audiobook request events (pending approval, approved, available, error) to configured backends. Non-blocking, atomic per-backend failure handling. Proper notification timing for all request flows including interactive search.
 
 ## Key Details
-- **Backends:** Discord (webhooks), Pushover (API)
+- **Backends:** Apprise (API), Discord (webhooks), ntfy (API), Pushover (API)
 - **Events:** request_pending_approval, request_approved, request_available, request_error
-- **Encryption:** AES-256-GCM for sensitive config (webhook URLs, API keys)
+- **Encryption:** AES-256-GCM for sensitive config (webhook URLs, API keys, notification URLs)
 - **Delivery:** Async via Bull job queue (priority 5)
 - **Failure Handling:** Non-blocking, Promise.allSettled (one backend fails, others succeed)
 
@@ -17,7 +17,7 @@ Sends notifications for audiobook request events (pending approval, approved, av
 ```prisma
 model NotificationBackend {
   id        String   @id @default(uuid())
-  type      String   // 'discord' | 'pushover'
+  type      String   // 'apprise' | 'discord' | 'ntfy' | 'pushover'
   name      String   // User-friendly label
   config    Json     // Encrypted sensitive values
   events    Json     // Array of subscribed events
@@ -70,7 +70,9 @@ model NotificationBackend {
 ## Configuration Encryption
 
 **Encrypted Values:**
+- Apprise: `urls`, `authToken`
 - Discord: `webhookUrl`
+- ntfy: `accessToken`
 - Pushover: `userKey`, `appToken`
 
 **Pattern:** `iv:authTag:encryptedData` (base64)
@@ -81,11 +83,25 @@ model NotificationBackend {
 
 ## Message Formatting
 
+**Apprise (JSON via Apprise API):**
+- Type: info (pending), success (approved/available), failure (error)
+- Modes: Stateless (send URLs directly) or Stateful (use persistent configKey, optional tag filter)
+- Endpoint: `{serverUrl}/notify/` (stateless) or `{serverUrl}/notify/{configKey}` (stateful)
+- Auth: Optional Bearer token via `authToken` config field
+- Format: Event title + book details + user + error (if applicable)
+
 **Discord (Rich Embeds):**
 - Color-coded by event (yellow=pending, green=approved, blue=available, red=error)
 - Fields: Title, Author, Requested By, Error (if applicable)
 - Footer: Request ID
 - Timestamp: Event time
+
+**ntfy (JSON with Tags):**
+- Tags: mailbox_with_mail, white_check_mark, tada, x (rendered as emojis by ntfy)
+- Priority: Default (3) for pending/approved, High (4) for available/error
+- Format: Event title + book details + user + error (if applicable)
+- Auth: Optional Bearer token via `accessToken` config field
+- Server: Configurable `serverUrl` (default: https://ntfy.sh)
 
 **Pushover (Plain Text with Emojis):**
 - Emojis: 📬 📬 🎉 ❌
@@ -154,15 +170,49 @@ model NotificationBackend {
 
 **Queue Method:** `addNotificationJob(event, requestId, title, author, userName, message?)`
 
+## Architecture
+
+**Provider Pattern:** `INotificationProvider` interface + registry (matches `IAuthProvider` pattern)
+
+```
+src/lib/services/notification/
+  INotificationProvider.ts          # Interface + shared types
+  notification.service.ts           # Core service with registry
+  index.ts                          # Re-exports
+  providers/
+    apprise.provider.ts             # Apprise API (100+ services)
+    discord.provider.ts             # Discord webhook
+    ntfy.provider.ts                # ntfy API
+    pushover.provider.ts            # Pushover API
+```
+
+**Registry:** Module-level `Map<string, INotificationProvider>` with `registerProvider()` / `getProvider()`
+
+**INotificationProvider interface:**
+- `type: string` — provider identifier (registry key)
+- `sensitiveFields: string[]` — fields needing encryption/masking
+- `metadata: ProviderMetadata` — self-describing UI/validation metadata
+- `send(config, payload): Promise<void>` — receives decrypted config
+
+**ProviderMetadata:** `{ type, displayName, description, iconLabel, iconColor, configFields[] }`
+**ProviderConfigField:** `{ name, label, type, required, placeholder?, defaultValue?, options? }`
+
+**Helper functions:**
+- `getRegisteredProviderTypes(): string[]` — all registered type keys
+- `getAllProviderMetadata(): ProviderMetadata[]` — metadata for all providers
+
+**API Endpoint:** `GET /api/admin/notifications/providers` — returns all provider metadata (admin-only)
+
 ## Extensibility
 
-**Adding New Backend (e.g., Email):**
-1. Add 'email' to NotificationBackendType enum
-2. Create EmailConfig interface
-3. Add encryption logic for smtpPassword
-4. Implement sendEmail() method in NotificationService
-5. Add email card to type selector (green "E" badge)
-6. Add email form fields to modal
+**Adding New Backend (2 steps):**
+1. Create `providers/email.provider.ts` implementing `INotificationProvider`:
+   - Set `type = 'email'`, `sensitiveFields = ['smtpPassword']`
+   - Set `metadata` with displayName, description, iconLabel, iconColor, configFields
+   - Implement `send()` with email-specific logic
+2. Register in `notification.service.ts`: `registerProvider(new EmailProvider())` + re-export from `index.ts`
+
+No UI changes, no API route changes, no Zod schema changes needed — the UI renders dynamically from provider metadata.
 
 **Adding New Event (e.g., download_complete):**
 1. Add 'download_complete' to NotificationEvent enum
@@ -173,7 +223,7 @@ model NotificationBackend {
 ## Tech Stack
 - Bull (job queue)
 - Node.js crypto (AES-256-GCM encryption)
-- Discord webhooks, Pushover API
+- Apprise API, Discord webhooks, ntfy API, Pushover API
 - React (UI), Tailwind CSS (styling)
 
 ## Related
