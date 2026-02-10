@@ -1,6 +1,10 @@
 /**
  * Component: Monitor Download Job Processor
  * Documentation: documentation/phase3/README.md
+ *
+ * PATCHED: Added skip_organize_after_download config flag to allow external
+ * post-download pipelines (e.g., auto-m4b + audiobook-tagger) to handle
+ * file organization instead of RMAB's built-in organize step.
  */
 
 import { MonitorDownloadPayload, getJobQueueService } from '../services/job-queue.service';
@@ -139,6 +143,46 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
 
       if (!request || !request.audiobook) {
         throw new Error('Request or audiobook not found or deleted');
+      }
+
+      // PATCH: Check if organize step should be skipped (for external pipelines)
+      const skipOrganize = await configService.get('skip_organize_after_download');
+
+      if (skipOrganize === 'true') {
+        // External pipeline handles post-download processing
+        // Mark request as downloaded directly, skipping organize + chapter merge
+        logger.info(`skip_organize_after_download is enabled — skipping organize step for request ${requestId}`);
+
+        await prisma.request.update({
+          where: { id: requestId },
+          data: {
+            status: 'downloaded',
+            progress: 100,
+            completedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+
+        // Send notification that download is complete
+        const jobQueue = getJobQueueService();
+        await jobQueue.addNotificationJob(
+          'request_available',
+          request.id,
+          request.audiobook.title,
+          request.audiobook.author,
+          'System'
+        ).catch((error) => {
+          logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+        });
+
+        return {
+          success: true,
+          completed: true,
+          message: 'Download completed, external pipeline will handle organization',
+          requestId,
+          progress: 100,
+          downloadPath: organizePath,
+        };
       }
 
       // Trigger organize files job with properly constructed path
