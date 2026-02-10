@@ -116,6 +116,7 @@ export async function GET(request: NextRequest) {
               },
               select: {
                 torrentUrl: true,
+                torrentName: true,
               },
               take: 1,
             },
@@ -139,6 +140,7 @@ export async function GET(request: NextRequest) {
           completedAt: request.completedAt,
           errorMessage: request.errorMessage,
           torrentUrl: request.downloadHistory[0]?.torrentUrl || null,
+          torrentName: request.downloadHistory[0]?.torrentName || null,
         }));
 
         return NextResponse.json({
