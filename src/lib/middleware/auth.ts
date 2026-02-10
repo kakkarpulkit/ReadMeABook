@@ -220,3 +220,36 @@ export async function isLocalAdmin(userId: string): Promise<boolean> {
 
   return user.isSetupAdmin && user.plexId.startsWith('local-');
 }
+
+/**
+ * Middleware: Require setup to be incomplete
+ * Blocks access to setup-only endpoints after initial setup is finished.
+ * Returns 403 if setup is already complete, otherwise invokes the handler.
+ */
+export async function requireSetupIncomplete(
+  request: NextRequest,
+  handler: (request: NextRequest) => Promise<NextResponse>
+): Promise<NextResponse> {
+  try {
+    const config = await prisma.configuration.findUnique({
+      where: { key: 'setup_completed' },
+    });
+
+    if (config?.value === 'true') {
+      logger.warn('Setup endpoint called after setup is complete', {
+        path: request.nextUrl.pathname,
+      });
+      return NextResponse.json(
+        {
+          error: 'Forbidden',
+          message: 'Setup has already been completed',
+        },
+        { status: 403 }
+      );
+    }
+  } catch {
+    // If database is not ready, setup is definitely not complete — allow through
+  }
+
+  return handler(request);
+}

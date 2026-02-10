@@ -479,8 +479,8 @@ export function AudiobookDetailsModal({
                 )}
               </div>
 
-              {/* Interactive Search - only if not available */}
-              {status.type !== 'available' && (
+              {/* Interactive Search - only if not available and user has permission */}
+              {status.type !== 'available' && (user?.role === 'admin' || user?.permissions?.interactiveSearch !== false) && (
                 <button
                   onClick={handleInteractiveSearch}
                   disabled={!user}
@@ -513,15 +513,17 @@ export function AudiobookDetailsModal({
                       </svg>
                     )}
                   </button>
-                  <button
-                    onClick={() => setShowInteractiveSearchEbook(true)}
-                    className="p-3 rounded-xl bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors"
-                    title="Search Ebook Sources"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                    </svg>
-                  </button>
+                  {(user?.role === 'admin' || user?.permissions?.interactiveSearch !== false) && (
+                    <button
+                      onClick={() => setShowInteractiveSearchEbook(true)}
+                      className="p-3 rounded-xl bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors"
+                      title="Search Ebook Sources"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                      </svg>
+                    </button>
+                  )}
                 </>
               )}
             </div>

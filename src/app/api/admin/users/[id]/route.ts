@@ -19,7 +19,7 @@ export async function PUT(
       try {
         const { id } = await params;
         const body = await request.json();
-        const { role, autoApproveRequests } = body;
+        const { role, autoApproveRequests, interactiveSearchAccess } = body;
 
         // Validate role
         if (!role || (role !== 'user' && role !== 'admin')) {
@@ -33,6 +33,14 @@ export async function PUT(
         if (autoApproveRequests !== undefined && autoApproveRequests !== null && typeof autoApproveRequests !== 'boolean') {
           return NextResponse.json(
             { error: 'Invalid autoApproveRequests. Must be a boolean or null' },
+            { status: 400 }
+          );
+        }
+
+        // Validate interactiveSearchAccess (optional)
+        if (interactiveSearchAccess !== undefined && interactiveSearchAccess !== null && typeof interactiveSearchAccess !== 'boolean') {
+          return NextResponse.json(
+            { error: 'Invalid interactiveSearchAccess. Must be a boolean or null' },
             { status: 400 }
           );
         }
@@ -91,21 +99,30 @@ export async function PUT(
           );
         }
 
-        // Validate that admins cannot have autoApproveRequests set to false
+        // Validate that admins cannot have permissions set to false
         if (role === 'admin' && autoApproveRequests === false) {
           return NextResponse.json(
             { error: 'Admins must always auto-approve requests. Cannot set autoApproveRequests to false for admin users.' },
             { status: 400 }
           );
         }
+        if (role === 'admin' && interactiveSearchAccess === false) {
+          return NextResponse.json(
+            { error: 'Admins always have interactive search access. Cannot set interactiveSearchAccess to false for admin users.' },
+            { status: 400 }
+          );
+        }
 
         // Prepare update data
-        const updateData: { role: string; autoApproveRequests?: boolean | null } = { role };
+        const updateData: { role: string; autoApproveRequests?: boolean | null; interactiveSearchAccess?: boolean | null } = { role };
         if (autoApproveRequests !== undefined) {
           updateData.autoApproveRequests = autoApproveRequests;
         }
+        if (interactiveSearchAccess !== undefined) {
+          updateData.interactiveSearchAccess = interactiveSearchAccess;
+        }
 
-        // Update user role and autoApproveRequests
+        // Update user
         const updatedUser = await prisma.user.update({
           where: { id },
           data: updateData,
@@ -114,6 +131,7 @@ export async function PUT(
             plexUsername: true,
             role: true,
             autoApproveRequests: true,
+            interactiveSearchAccess: true,
           },
         });
 

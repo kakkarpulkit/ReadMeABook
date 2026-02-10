@@ -11,6 +11,8 @@ import Link from 'next/link';
 import { authenticatedFetcher, fetchJSON } from '@/lib/utils/api';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { GlobalUserSettingsModal } from '@/components/admin/users/GlobalUserSettingsModal';
+import { UserPermissionsModal } from '@/components/admin/users/UserPermissionsModal';
 
 interface User {
   id: string;
@@ -25,6 +27,7 @@ interface User {
   updatedAt: string;
   lastLoginAt: string | null;
   autoApproveRequests: boolean | null;
+  interactiveSearchAccess: boolean | null;
   _count: {
     requests: number;
   };
@@ -48,6 +51,10 @@ function AdminUsersPageContent() {
     '/api/admin/settings/auto-approve',
     authenticatedFetcher
   );
+  const { data: globalInteractiveSearchData, mutate: mutateGlobalInteractiveSearch } = useSWR(
+    '/api/admin/settings/interactive-search',
+    authenticatedFetcher
+  );
   const [editDialog, setEditDialog] = useState<{
     isOpen: boolean;
     user: User | null;
@@ -66,6 +73,9 @@ function AdminUsersPageContent() {
   }>({ isOpen: false, user: null });
   const [deleting, setDeleting] = useState(false);
   const [globalAutoApprove, setGlobalAutoApprove] = useState<boolean>(false);
+  const [globalInteractiveSearch, setGlobalInteractiveSearch] = useState<boolean>(true);
+  const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
+  const [permissionsUserId, setPermissionsUserId] = useState<string | null>(null);
   const toast = useToast();
 
   const isLoading = !data && !error;
@@ -80,6 +90,15 @@ function AdminUsersPageContent() {
       setGlobalAutoApprove(true);
     }
   }, [globalAutoApproveData]);
+
+  // Sync global interactive search state (default to true if not set)
+  useEffect(() => {
+    if (globalInteractiveSearchData?.interactiveSearchAccess !== undefined) {
+      setGlobalInteractiveSearch(globalInteractiveSearchData.interactiveSearchAccess);
+    } else if (globalInteractiveSearchData !== undefined && globalInteractiveSearchData.interactiveSearchAccess === undefined) {
+      setGlobalInteractiveSearch(true);
+    }
+  }, [globalInteractiveSearchData]);
 
   const handleGlobalAutoApproveToggle = async (newValue: boolean) => {
     // Optimistic update
@@ -97,6 +116,27 @@ function AdminUsersPageContent() {
       // Revert on error
       setGlobalAutoApprove(!newValue);
       const errorMsg = err instanceof Error ? err.message : 'Failed to update auto-approve setting';
+      toast.error(errorMsg);
+      console.error(err);
+    }
+  };
+
+  const handleGlobalInteractiveSearchToggle = async (newValue: boolean) => {
+    // Optimistic update
+    setGlobalInteractiveSearch(newValue);
+
+    try {
+      await fetchJSON('/api/admin/settings/interactive-search', {
+        method: 'PATCH',
+        body: JSON.stringify({ interactiveSearchAccess: newValue }),
+      });
+      toast.success(`Global interactive search ${newValue ? 'enabled' : 'disabled'}`);
+      mutateGlobalInteractiveSearch();
+      mutate(); // Refresh users list to show updated state
+    } catch (err) {
+      // Revert on error
+      setGlobalInteractiveSearch(!newValue);
+      const errorMsg = err instanceof Error ? err.message : 'Failed to update interactive search setting';
       toast.error(errorMsg);
       console.error(err);
     }
@@ -131,6 +171,33 @@ function AdminUsersPageContent() {
       console.error('[AutoApprove] Error occurred, reverting:', err);
       mutate({ users: previousUsers }, false);
       const errorMsg = err instanceof Error ? err.message : 'Failed to update user auto-approve setting';
+      toast.error(errorMsg);
+      console.error(err);
+    }
+  };
+
+  const handleUserInteractiveSearchToggle = async (user: User, newValue: boolean) => {
+    // Optimistic update
+    const previousUsers = data?.users || [];
+    const optimisticUsers = previousUsers.map((u: User) =>
+      u.id === user.id ? { ...u, interactiveSearchAccess: newValue } : u
+    );
+    mutate({ users: optimisticUsers }, false);
+
+    try {
+      await fetchJSON(`/api/admin/users/${user.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          role: user.role,
+          interactiveSearchAccess: newValue
+        }),
+      });
+      toast.success(`Interactive search ${newValue ? 'enabled' : 'disabled'} for ${user.plexUsername}`);
+      mutate(); // Refresh users list
+    } catch (err) {
+      // Revert on error
+      mutate({ users: previousUsers }, false);
+      const errorMsg = err instanceof Error ? err.message : 'Failed to update user interactive search setting';
       toast.error(errorMsg);
       console.error(err);
     }
@@ -273,6 +340,7 @@ function AdminUsersPageContent() {
   }
 
   const users: User[] = data?.users || [];
+  const permissionsUser = permissionsUserId ? users.find((u) => u.id === permissionsUserId) ?? null : null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -287,40 +355,26 @@ function AdminUsersPageContent() {
               Manage user roles and permissions
             </p>
           </div>
-          <Link
-            href="/admin"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded-lg transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            <span>Back to Dashboard</span>
-          </Link>
-        </div>
-
-        {/* Global Auto-Approve Toggle */}
-        <div className="mb-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
-          <div className="flex items-start gap-4">
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => handleGlobalAutoApproveToggle(!globalAutoApprove)}
-              className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 mt-0.5"
-              style={{ backgroundColor: globalAutoApprove ? '#3b82f6' : '#d1d5db' }}
+              onClick={() => setGlobalSettingsOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
             >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${globalAutoApprove ? 'translate-x-6' : 'translate-x-1'}`}
-              />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span>Global User Permissions</span>
             </button>
-            <div className="flex-1">
-              <label
-                onClick={() => handleGlobalAutoApproveToggle(!globalAutoApprove)}
-                className="block text-base font-semibold text-gray-900 dark:text-gray-100 cursor-pointer"
-              >
-                Auto-Approve All Requests
-              </label>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                When enabled, all user requests are automatically processed. When disabled, you can set per-user approval settings below.
-              </p>
-            </div>
+            <Link
+              href="/admin"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded-lg transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span>Back to Dashboard</span>
+            </Link>
           </div>
         </div>
 
@@ -403,7 +457,7 @@ function AdminUsersPageContent() {
                   Role
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Auto-Approve
+                  Permissions
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Requests
@@ -471,31 +525,34 @@ function AdminUsersPageContent() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
+                    <button
+                      onClick={() => setPermissionsUserId(user.id)}
+                      className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                    >
                       {user.role === 'admin' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                           </svg>
-                          Always On
+                          Full Access
                         </span>
                       ) : globalAutoApprove ? (
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          Global Setting
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                          Global Default
+                        </span>
+                      ) : (user.autoApproveRequests ?? false) ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          Auto-Approve
                         </span>
                       ) : (
-                        <button
-                          onClick={() => handleUserAutoApproveToggle(user, !(user.autoApproveRequests ?? false))}
-                          className="relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                          style={{ backgroundColor: (user.autoApproveRequests ?? false) ? '#3b82f6' : '#d1d5db' }}
-                          title={`Toggle auto-approve for ${user.plexUsername}`}
-                        >
-                          <span
-                            className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${(user.autoApproveRequests ?? false) ? 'translate-x-6' : 'translate-x-1'}`}
-                          />
-                        </button>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                          Manual
+                        </span>
                       )}
-                    </div>
+                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                     {user._count.requests}
@@ -587,7 +644,7 @@ function AdminUsersPageContent() {
             <li>• <strong>User:</strong> Can request audiobooks, view own requests, and search the catalog</li>
             <li>• <strong>Admin:</strong> Full system access including settings, user management, and all requests</li>
             <li>• <strong>Setup Admin:</strong> The initial admin account created during setup - this account is protected and cannot be changed or deleted</li>
-            <li>• <strong>Auto-Approve:</strong> When the global setting is enabled, all requests are automatically processed. When disabled, you can control auto-approval per user. Admin requests are always auto-approved.</li>
+            <li>• <strong>Permissions:</strong> Click a user&apos;s permission badge to manage individual settings (auto-approve, interactive search). Use Global User Permissions to control system-wide defaults. Admins always have full access.</li>
             <li>• <strong>OIDC Users:</strong> Role management is handled by the identity provider - use admin role mapping in OIDC settings. Cannot be deleted as access is managed externally.</li>
             <li>• <strong>Plex Users:</strong> Can have their roles changed, but cannot be deleted as access is managed by Plex.</li>
             <li>• <strong>Local Users:</strong> Can be freely assigned user or admin roles (except setup admin). Can be deleted (their requests are preserved for historical records).</li>
@@ -721,6 +778,31 @@ function AdminUsersPageContent() {
           cancelText="Cancel"
           isLoading={deleting}
           variant="danger"
+        />
+
+        {/* Global User Settings Modal */}
+        <GlobalUserSettingsModal
+          isOpen={globalSettingsOpen}
+          onClose={() => setGlobalSettingsOpen(false)}
+          globalAutoApprove={globalAutoApprove}
+          onToggleAutoApprove={handleGlobalAutoApproveToggle}
+          globalInteractiveSearch={globalInteractiveSearch}
+          onToggleInteractiveSearch={handleGlobalInteractiveSearchToggle}
+        />
+
+        {/* User Permissions Modal */}
+        <UserPermissionsModal
+          isOpen={permissionsUser !== null}
+          onClose={() => setPermissionsUserId(null)}
+          user={permissionsUser}
+          globalAutoApprove={globalAutoApprove}
+          globalInteractiveSearch={globalInteractiveSearch}
+          onToggleAutoApprove={(user, newValue) => {
+            handleUserAutoApproveToggle(user as User, newValue);
+          }}
+          onToggleInteractiveSearch={(user, newValue) => {
+            handleUserInteractiveSearchToggle(user as User, newValue);
+          }}
         />
       </div>
     </div>

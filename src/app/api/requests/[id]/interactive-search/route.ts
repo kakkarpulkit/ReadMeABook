@@ -9,6 +9,7 @@ import { prisma } from '@/lib/db';
 import { getProwlarrService } from '@/lib/integrations/prowlarr.service';
 import { rankTorrents } from '@/lib/utils/ranking-algorithm';
 import { RMABLogger } from '@/lib/utils/logger';
+import { resolveInteractiveSearchAccess } from '@/lib/utils/permissions';
 
 const logger = RMABLogger.create('API.InteractiveSearch');
 
@@ -67,6 +68,18 @@ export async function POST(
       if (requestRecord.status === 'awaiting_approval') {
         return NextResponse.json(
           { error: 'AwaitingApproval', message: 'This request is awaiting admin approval. You cannot search for torrents until it is approved.' },
+          { status: 403 }
+        );
+      }
+
+      // Check interactive search access permission
+      const callingUser = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { role: true, interactiveSearchAccess: true },
+      });
+      if (!callingUser || !(await resolveInteractiveSearchAccess(callingUser.role, callingUser.interactiveSearchAccess))) {
+        return NextResponse.json(
+          { error: 'Forbidden', message: 'You do not have interactive search access. Contact your admin to enable this permission.' },
           { status: 403 }
         );
       }

@@ -10,15 +10,16 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { fetchWithAuth } from '@/lib/utils/api';
+import { DownloadClientType, getClientDisplayName } from '@/lib/interfaces/download-client.interface';
 
 interface DownloadClientModalProps {
   isOpen: boolean;
   onClose: () => void;
   mode: 'add' | 'edit';
-  clientType?: 'qbittorrent' | 'sabnzbd';
+  clientType?: DownloadClientType;
   initialClient?: {
     id: string;
-    type: 'qbittorrent' | 'sabnzbd';
+    type: DownloadClientType;
     name: string;
     url: string;
     username?: string;
@@ -29,9 +30,11 @@ interface DownloadClientModalProps {
     remotePath?: string;
     localPath?: string;
     category?: string;
+    customPath?: string;
   };
   onSave: (client: any) => Promise<void>;
   apiMode: 'wizard' | 'settings';
+  downloadDir?: string;
 }
 
 export function DownloadClientModal({
@@ -42,9 +45,10 @@ export function DownloadClientModal({
   initialClient,
   onSave,
   apiMode,
+  downloadDir = '/downloads',
 }: DownloadClientModalProps) {
   const type = mode === 'edit' ? initialClient?.type : clientType;
-  const typeName = type === 'qbittorrent' ? 'qBittorrent' : 'SABnzbd';
+  const typeName = type ? getClientDisplayName(type) : '';
 
   // Form state
   const [name, setName] = useState('');
@@ -57,6 +61,7 @@ export function DownloadClientModal({
   const [remotePath, setRemotePath] = useState('');
   const [localPath, setLocalPath] = useState('');
   const [category, setCategory] = useState('readmeabook');
+  const [customPath, setCustomPath] = useState('');
 
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -79,6 +84,7 @@ export function DownloadClientModal({
         setRemotePath(initialClient.remotePath || '');
         setLocalPath(initialClient.localPath || '');
         setCategory(initialClient.category || 'readmeabook');
+        setCustomPath(initialClient.customPath || '');
       } else {
         // Add mode defaults
         setName(typeName);
@@ -91,6 +97,7 @@ export function DownloadClientModal({
         setRemotePath('');
         setLocalPath('');
         setCategory('readmeabook');
+        setCustomPath('');
       }
       setTestResult(null);
       setErrors({});
@@ -111,6 +118,10 @@ export function DownloadClientModal({
     // SABnzbd always requires API key; qBittorrent credentials are optional (supports IP whitelist auth)
     if (type === 'sabnzbd' && (!password.trim() || (mode === 'add' && password === '********'))) {
       newErrors.password = 'API key is required';
+    }
+
+    if (customPath.includes('..')) {
+      newErrors.customPath = 'Path cannot contain ".."';
     }
 
     if (remotePathMappingEnabled) {
@@ -140,8 +151,9 @@ export function DownloadClientModal({
 
       const testData = {
         type,
+        name,
         url,
-        username: type === 'qbittorrent' ? username : undefined,
+        username: username || undefined,
         password: isPasswordMasked ? undefined : password,
         // Include clientId when editing so server can use stored password
         ...(mode === 'edit' && initialClient && isPasswordMasked ? { clientId: initialClient.id } : {}),
@@ -202,11 +214,14 @@ export function DownloadClientModal({
     setSaving(true);
 
     try {
+      // Strip leading/trailing slashes from customPath
+      const sanitizedCustomPath = customPath.replace(/^\/+|\/+$/g, '').trim();
+
       const clientData: any = {
         type,
         name,
         url,
-        username: type === 'qbittorrent' ? username : undefined,
+        username: type !== 'sabnzbd' ? username : undefined,
         password: password === '********' ? undefined : password, // Don't send masked password on edit
         enabled,
         disableSSLVerify,
@@ -214,6 +229,7 @@ export function DownloadClientModal({
         remotePath: remotePathMappingEnabled ? remotePath : undefined,
         localPath: remotePathMappingEnabled ? localPath : undefined,
         category,
+        customPath: sanitizedCustomPath || undefined,
       };
 
       if (mode === 'edit' && initialClient) {
@@ -264,7 +280,7 @@ export function DownloadClientModal({
           <Input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder={type === 'qbittorrent' ? 'http://localhost:8080' : 'http://localhost:8081'}
+            placeholder={type === 'transmission' ? 'http://localhost:9091' : type === 'qbittorrent' ? 'http://localhost:8080' : type === 'nzbget' ? 'http://localhost:6789' : 'http://localhost:8081'}
             error={errors.url}
           />
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -272,8 +288,8 @@ export function DownloadClientModal({
           </p>
         </div>
 
-        {/* Username (qBittorrent only) */}
-        {type === 'qbittorrent' && (
+        {/* Username (qBittorrent and Transmission) */}
+        {type !== 'sabnzbd' && (
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Username
@@ -290,18 +306,23 @@ export function DownloadClientModal({
         {/* Password / API Key */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            {type === 'qbittorrent' ? 'Password' : 'API Key'}
+            {type === 'sabnzbd' ? 'API Key' : 'Password'}
           </label>
           <Input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={type === 'qbittorrent' ? 'Password' : 'API Key from SABnzbd Config > General'}
+            placeholder={type === 'sabnzbd' ? 'API Key from SABnzbd Config > General' : 'Password'}
             error={errors.password}
           />
           {type === 'sabnzbd' && (
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Found in SABnzbd under Config → General → API Key
+            </p>
+          )}
+          {type === 'nzbget' && (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Configured in NZBGet under Settings → Security → ControlPassword
             </p>
           )}
         </div>
@@ -340,6 +361,27 @@ export function DownloadClientModal({
               Use this client for downloads
             </p>
           </label>
+        </div>
+
+        {/* Custom Download Path */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Custom Download Path
+          </label>
+          <Input
+            value={customPath}
+            onChange={(e) => setCustomPath(e.target.value)}
+            placeholder="e.g. torrents or usenet/books"
+            error={errors.customPath}
+          />
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Optional relative sub-path appended to the base download directory
+          </p>
+          <p className="mt-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+            Downloads to: {customPath.replace(/^\/+|\/+$/g, '').trim()
+              ? `${downloadDir}/${customPath.replace(/^\/+|\/+$/g, '').trim()}`
+              : downloadDir}
+          </p>
         </div>
 
         {/* Remote Path Mapping */}

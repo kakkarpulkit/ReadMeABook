@@ -121,11 +121,6 @@ export class ProwlarrService {
     filters?: SearchFilters
   ): Promise<TorrentResult[]> {
     try {
-      // Get configured download client type to determine if we should filter by category
-      const { getConfigService } = await import('../services/config.service');
-      const configService = getConfigService();
-      const clientType = (await configService.get('download_client_type')) || 'qbittorrent';
-
       // Determine which categories to search
       // Priority: filters.categories > filters.category > defaultCategory
       let categoriesToSearch: number[];
@@ -560,20 +555,22 @@ export class ProwlarrService {
    * Extract audiobook metadata from torrent title
    */
   private extractMetadata(title: string): {
-    format?: 'M4B' | 'M4A' | 'MP3';
+    format?: 'M4B' | 'M4A' | 'MP3' | 'FLAC';
     bitrate?: string;
     hasChapters?: boolean;
   } {
     const upperTitle = title.toUpperCase();
 
     // Detect format
-    let format: 'M4B' | 'M4A' | 'MP3' | undefined;
+    let format: 'M4B' | 'M4A' | 'MP3' | 'FLAC' | undefined;
     if (upperTitle.includes('M4B')) {
       format = 'M4B';
     } else if (upperTitle.includes('M4A')) {
       format = 'M4A';
     } else if (upperTitle.includes('MP3')) {
       format = 'MP3';
+    } else if (upperTitle.includes('FLAC')) {
+      format = 'FLAC';
     }
 
     // Detect bitrate (e.g., "64kbps", "128 KBPS")

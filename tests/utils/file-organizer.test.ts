@@ -473,7 +473,7 @@ describe('file organizer', () => {
     expect(result.isFile).toBe(true);
   });
 
-  it('adds errors when source audio files are missing', async () => {
+  it('returns failure when source audio files are missing', async () => {
     configState.values.set('metadata_tagging_enabled', 'false');
     configState.values.set('ebook_sidecar_enabled', 'false');
 
@@ -498,8 +498,10 @@ describe('file organizer', () => {
       author: 'Author',
     }, '{author}/{title}');
 
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.audioFiles).toEqual([]);
     expect(result.errors.join(' ')).toContain('Source file not found');
+    expect(result.errors.join(' ')).toContain('No audio files were successfully copied');
     expect(fsMock.copyFile).not.toHaveBeenCalled();
   });
 
@@ -645,5 +647,257 @@ describe('file organizer', () => {
 
     expect((organizer as any).mediaDir).toBe('/media/custom');
     expect((organizer as any).tempDir).toBe('/tmp/custom');
+  });
+
+  it('returns failure when all audio file copies fail (EPERM)', async () => {
+    configState.values.set('metadata_tagging_enabled', 'false');
+
+    const organizer = new FileOrganizer('/media', '/tmp');
+    (organizer as any).findAudiobookFiles = vi.fn().mockResolvedValue({
+      audioFiles: ['book.m4b'],
+      coverFile: undefined,
+      isFile: false,
+    });
+
+    const sourcePath = path.join('/downloads', 'book', 'book.m4b');
+    const expectedDir = path.join('/media', 'Author', 'Book');
+    const targetFile = path.join(expectedDir, 'book.m4b');
+
+    fsMock.access.mockImplementation(async (filePath: string) => {
+      if (path.normalize(filePath) === path.normalize(sourcePath)) return undefined;
+      throw new Error('missing');
+    });
+    fsMock.mkdir.mockResolvedValue(undefined);
+    fsMock.copyFile.mockRejectedValue(
+      Object.assign(new Error('EPERM: operation not permitted, copyfile'), { code: 'EPERM' })
+    );
+
+    const result = await organizer.organize('/downloads/book', {
+      title: 'Book',
+      author: 'Author',
+    }, '{author}/{title}');
+
+    expect(result.success).toBe(false);
+    expect(result.audioFiles).toEqual([]);
+    expect(result.filesMovedCount).toBe(0);
+    expect(result.targetPath).toBe(expectedDir);
+    expect(result.errors.join(' ')).toContain('EPERM');
+    expect(result.errors.join(' ')).toContain('No audio files were successfully copied');
+  });
+
+  it('falls back to untagged file when tagged copy fails', async () => {
+    configState.values.set('metadata_tagging_enabled', 'true');
+
+    metadataMock.checkFfmpegAvailable.mockResolvedValue(true);
+    const sourcePath = path.join('/downloads', 'book', 'book.m4b');
+    const taggedPath = `${sourcePath}.tmp`;
+    metadataMock.tagMultipleFiles.mockResolvedValue([
+      { success: true, filePath: sourcePath, taggedFilePath: taggedPath },
+    ]);
+
+    const expectedDir = path.join('/media', 'Author', 'Book');
+    const targetFile = path.join(expectedDir, 'book.m4b');
+
+    fsMock.access.mockImplementation(async (filePath: string) => {
+      const normalized = path.normalize(filePath);
+      if (normalized === path.normalize(taggedPath)) return undefined;
+      if (normalized === path.normalize(sourcePath)) return undefined;
+      throw new Error('missing');
+    });
+    fsMock.mkdir.mockResolvedValue(undefined);
+    fsMock.copyFile.mockImplementation(async (src: string, dest: string) => {
+      // Tagged file copy fails with EPERM
+      if (path.normalize(src) === path.normalize(taggedPath)) {
+        throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+      }
+      // Original file copy succeeds
+      return undefined;
+    });
+    fsMock.chmod.mockResolvedValue(undefined);
+    fsMock.unlink.mockResolvedValue(undefined);
+
+    const organizer = new FileOrganizer('/media', '/tmp');
+    (organizer as any).findAudiobookFiles = vi.fn().mockResolvedValue({
+      audioFiles: ['book.m4b'],
+      coverFile: undefined,
+      isFile: false,
+    });
+
+    const result = await organizer.organize('/downloads/book', {
+      title: 'Book',
+      author: 'Author',
+    }, '{author}/{title}',
+      { jobId: 'job-fallback', context: 'test' }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.audioFiles).toEqual([targetFile]);
+    expect(result.filesMovedCount).toBe(1);
+    // Tagged temp file should be cleaned up
+    expect(fsMock.unlink).toHaveBeenCalledWith(taggedPath);
+    // Fallback copy should use the original source
+    expect(fsMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
+    // Should record that tagged copy failed
+    expect(result.errors.join(' ')).toContain('Tagged copy failed');
+    expect(result.errors.join(' ')).toContain('without metadata tags');
+  });
+
+  it('returns failure when tagged copy and fallback both fail', async () => {
+    configState.values.set('metadata_tagging_enabled', 'true');
+
+    metadataMock.checkFfmpegAvailable.mockResolvedValue(true);
+    const sourcePath = path.join('/downloads', 'book', 'book.m4b');
+    const taggedPath = `${sourcePath}.tmp`;
+    metadataMock.tagMultipleFiles.mockResolvedValue([
+      { success: true, filePath: sourcePath, taggedFilePath: taggedPath },
+    ]);
+
+    fsMock.access.mockImplementation(async (filePath: string) => {
+      const normalized = path.normalize(filePath);
+      if (normalized === path.normalize(taggedPath)) return undefined;
+      if (normalized === path.normalize(sourcePath)) return undefined;
+      throw new Error('missing');
+    });
+    fsMock.mkdir.mockResolvedValue(undefined);
+    // Both tagged and original copies fail
+    fsMock.copyFile.mockRejectedValue(
+      Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' })
+    );
+    fsMock.unlink.mockResolvedValue(undefined);
+
+    const organizer = new FileOrganizer('/media', '/tmp');
+    (organizer as any).findAudiobookFiles = vi.fn().mockResolvedValue({
+      audioFiles: ['book.m4b'],
+      coverFile: undefined,
+      isFile: false,
+    });
+
+    const result = await organizer.organize('/downloads/book', {
+      title: 'Book',
+      author: 'Author',
+    }, '{author}/{title}',
+      { jobId: 'job-both-fail', context: 'test' }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.audioFiles).toEqual([]);
+    expect(result.filesMovedCount).toBe(0);
+    expect(result.errors.join(' ')).toContain('EPERM');
+    expect(result.errors.join(' ')).toContain('No audio files were successfully copied');
+    // Should still clean up tagged temp file
+    expect(fsMock.unlink).toHaveBeenCalledWith(taggedPath);
+  });
+
+  it('reports partial success when some files copy and others fail', async () => {
+    configState.values.set('metadata_tagging_enabled', 'false');
+
+    const organizer = new FileOrganizer('/media', '/tmp');
+    (organizer as any).findAudiobookFiles = vi.fn().mockResolvedValue({
+      audioFiles: ['disc1.mp3', 'disc2.mp3'],
+      coverFile: undefined,
+      isFile: false,
+    });
+
+    const sourceRoot = path.normalize('/downloads/book');
+    const source1 = path.join('/downloads', 'book', 'disc1.mp3');
+    const source2 = path.join('/downloads', 'book', 'disc2.mp3');
+    const expectedDir = path.join('/media', 'Author', 'Book');
+
+    fsMock.access.mockImplementation(async (filePath: string) => {
+      if (path.normalize(filePath).startsWith(sourceRoot)) return undefined;
+      throw new Error('missing');
+    });
+    fsMock.mkdir.mockResolvedValue(undefined);
+    fsMock.copyFile.mockImplementation(async (src: string) => {
+      // First file succeeds, second fails
+      if (path.normalize(src) === path.normalize(source2)) {
+        throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+      }
+      return undefined;
+    });
+    fsMock.chmod.mockResolvedValue(undefined);
+
+    const result = await organizer.organize('/downloads/book', {
+      title: 'Book',
+      author: 'Author',
+    }, '{author}/{title}');
+
+    // Should succeed because at least one file was copied
+    expect(result.success).toBe(true);
+    expect(result.audioFiles).toEqual([path.join(expectedDir, 'disc1.mp3')]);
+    expect(result.filesMovedCount).toBe(1);
+    expect(result.errors.join(' ')).toContain('Failed to copy disc2.mp3');
+  });
+
+  it('succeeds with cover art when audio files were copied', async () => {
+    configState.values.set('metadata_tagging_enabled', 'false');
+
+    const organizer = new FileOrganizer('/media', '/tmp');
+    (organizer as any).findAudiobookFiles = vi.fn().mockResolvedValue({
+      audioFiles: ['book.m4b'],
+      coverFile: undefined,
+      isFile: false,
+    });
+
+    const sourcePath = path.join('/downloads', 'book', 'book.m4b');
+    const expectedDir = path.join('/media', 'Author', 'Book');
+
+    fsMock.access.mockImplementation(async (filePath: string) => {
+      if (path.normalize(filePath) === path.normalize(sourcePath)) return undefined;
+      throw new Error('missing');
+    });
+    fsMock.mkdir.mockResolvedValue(undefined);
+    fsMock.copyFile.mockResolvedValue(undefined);
+    fsMock.chmod.mockResolvedValue(undefined);
+    fsMock.writeFile.mockResolvedValue(undefined);
+    axiosMock.get.mockResolvedValue({ data: Buffer.from('cover') });
+
+    const result = await organizer.organize('/downloads/book', {
+      title: 'Book',
+      author: 'Author',
+      coverArtUrl: 'https://images.example/cover.jpg',
+    }, '{author}/{title}');
+
+    expect(result.success).toBe(true);
+    expect(result.audioFiles).toEqual([path.join(expectedDir, 'book.m4b')]);
+    expect(result.coverArtFile).toBe(path.join(expectedDir, 'cover.jpg'));
+  });
+
+  it('returns failure even when cover art succeeds but audio copy fails', async () => {
+    configState.values.set('metadata_tagging_enabled', 'false');
+
+    const organizer = new FileOrganizer('/media', '/tmp');
+    (organizer as any).findAudiobookFiles = vi.fn().mockResolvedValue({
+      audioFiles: ['book.m4b'],
+      coverFile: undefined,
+      isFile: false,
+    });
+
+    const sourcePath = path.join('/downloads', 'book', 'book.m4b');
+    const expectedDir = path.join('/media', 'Author', 'Book');
+
+    fsMock.access.mockImplementation(async (filePath: string) => {
+      if (path.normalize(filePath) === path.normalize(sourcePath)) return undefined;
+      throw new Error('missing');
+    });
+    fsMock.mkdir.mockResolvedValue(undefined);
+    fsMock.copyFile.mockRejectedValue(
+      Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' })
+    );
+    fsMock.writeFile.mockResolvedValue(undefined);
+    axiosMock.get.mockResolvedValue({ data: Buffer.from('cover') });
+
+    const result = await organizer.organize('/downloads/book', {
+      title: 'Book',
+      author: 'Author',
+      coverArtUrl: 'https://images.example/cover.jpg',
+    }, '{author}/{title}');
+
+    // Audio copy failed → should be failure despite cover art being available
+    expect(result.success).toBe(false);
+    expect(result.audioFiles).toEqual([]);
+    expect(result.filesMovedCount).toBe(0);
+    expect(result.errors.join(' ')).toContain('EPERM');
+    expect(result.errors.join(' ')).toContain('No audio files were successfully copied');
   });
 });

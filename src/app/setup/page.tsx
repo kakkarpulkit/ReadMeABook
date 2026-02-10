@@ -495,6 +495,7 @@ export default function SetupWizard() {
       return (
         <DownloadClientStep
           downloadClients={state.downloadClients}
+          downloadDir={state.downloadDir}
           onUpdate={updateField}
           onNext={() => goToStep(currentStepNumber + 1)}
           onBack={() => goToStep(currentStepNumber - 1)}

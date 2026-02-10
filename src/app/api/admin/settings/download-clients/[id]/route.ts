@@ -37,6 +37,7 @@ export async function PUT(
           remotePath,
           localPath,
           category,
+          customPath,
         } = body;
 
         const config = await getConfigService();
@@ -53,6 +54,14 @@ export async function PUT(
 
         const existingClient = clients[clientIndex];
 
+        // Validate customPath: reject paths containing ".."
+        if (customPath && customPath.includes('..')) {
+          return NextResponse.json(
+            { error: 'Custom path cannot contain ".."' },
+            { status: 400 }
+          );
+        }
+
         // Build updated client (preserve fields not in request)
         const updatedClient: DownloadClientConfig = {
           ...existingClient,
@@ -66,6 +75,7 @@ export async function PUT(
           remotePath: remotePath !== undefined ? remotePath : existingClient.remotePath,
           localPath: localPath !== undefined ? localPath : existingClient.localPath,
           category: category !== undefined ? category : existingClient.category,
+          customPath: customPath !== undefined ? (customPath || undefined) : existingClient.customPath,
         };
 
         // Validate path mapping if enabled

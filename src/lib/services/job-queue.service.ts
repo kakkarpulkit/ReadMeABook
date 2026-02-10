@@ -7,6 +7,7 @@ import Queue, { Job as BullJob, JobOptions } from 'bull';
 import Redis from 'ioredis';
 import { prisma } from '../db';
 import { TorrentResult } from '../utils/ranking-algorithm';
+import { DownloadClientType } from '../interfaces/download-client.interface';
 import { RMABLogger } from '../utils/logger';
 
 const logger = RMABLogger.create('JobQueue');
@@ -59,7 +60,7 @@ export interface MonitorDownloadPayload extends JobPayload {
   requestId: string;
   downloadHistoryId: string;
   downloadClientId: string;
-  downloadClient: 'qbittorrent' | 'sabnzbd';
+  downloadClient: DownloadClientType;
 }
 
 export interface OrganizeFilesPayload extends JobPayload {
@@ -545,7 +546,7 @@ export class JobQueueService {
     requestId: string,
     downloadHistoryId: string,
     downloadClientId: string,
-    downloadClient: 'qbittorrent' | 'sabnzbd',
+    downloadClient: DownloadClientType,
     delaySeconds: number = 0
   ): Promise<string> {
     return await this.addJob(

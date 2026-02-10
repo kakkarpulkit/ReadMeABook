@@ -37,7 +37,8 @@ Result: Douglas Adams/Stephen Fry/The Hitchhiker's Guide to the Galaxy/
 ## Process
 
 1. Download completes in `/downloads/[torrent-name]/` or `/downloads/[filename]` (single file)
-2. Identify audiobook files (.m4b, .m4a, .mp3) - supports both directories and single files
+1b. **Path stored** in `DownloadHistory.downloadPath` (mapped local path) for retry reliability — avoids reconstructing path from `torrentName` which may differ from actual folder name
+2. Identify audiobook files (.m4b, .m4a, .mp3, .mp4, .aa, .aax, .flac, .ogg) - supports both directories and single files
 3. Read media directory and path template from database config (`media_dir`, `audiobook_path_template`)
 4. Apply template to create target path: `[media_dir]/[template result]/`
 5. **Copy** files (not move - originals stay for seeding)
@@ -94,6 +95,7 @@ Result: Douglas Adams/Stephen Fry/The Hitchhiker's Guide to the Galaxy/
 **Supported Formats:**
 - m4b, m4a, mp4 (AAC audiobooks)
 - mp3 (ID3v2 tags)
+- flac (Vorbis comment tags)
 
 **Metadata Written:**
 - `title` - Book title

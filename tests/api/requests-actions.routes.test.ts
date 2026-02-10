@@ -79,6 +79,10 @@ describe('Request action routes', () => {
       userId: 'user-1',
       audiobook: { title: 'Title', author: 'Author' },
     });
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      role: 'user',
+      interactiveSearchAccess: null,
+    });
     configServiceMock.get.mockResolvedValueOnce(JSON.stringify([{ id: 1, priority: 10 }]));
     configServiceMock.get.mockResolvedValueOnce(null);
     prowlarrMock.search.mockResolvedValueOnce([{ title: 'Result', size: 100 }]);

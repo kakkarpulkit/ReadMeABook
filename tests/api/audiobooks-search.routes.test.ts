@@ -67,7 +67,7 @@ describe('Audiobooks search torrents route', () => {
       .mockResolvedValueOnce(JSON.stringify([{ id: 1, name: 'Indexer', protocol: 'torrent', priority: 10 }]))
       .mockResolvedValueOnce(null);
 
-    groupIndexersMock.mockReturnValue([{ categories: [1], indexerIds: [1] }]);
+    groupIndexersMock.mockReturnValue({ groups: [{ categories: [1], indexerIds: [1] }], skippedIndexers: [] });
     prowlarrMock.search.mockResolvedValue([{ title: 'Result', size: 100, indexer: 'Indexer', indexerId: 1 }]);
     rankTorrentsMock.mockReturnValue([
       {

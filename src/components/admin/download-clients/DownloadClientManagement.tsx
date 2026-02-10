@@ -10,10 +10,11 @@ import { Button } from '@/components/ui/Button';
 import { DownloadClientCard } from './DownloadClientCard';
 import { DownloadClientModal } from './DownloadClientModal';
 import { fetchWithAuth } from '@/lib/utils/api';
+import { DownloadClientType, CLIENT_PROTOCOL_MAP, getClientDisplayName } from '@/lib/interfaces/download-client.interface';
 
 interface DownloadClient {
   id: string;
-  type: 'qbittorrent' | 'sabnzbd';
+  type: DownloadClientType;
   name: string;
   url: string;
   username?: string;
@@ -24,24 +25,27 @@ interface DownloadClient {
   remotePath?: string;
   localPath?: string;
   category?: string;
+  customPath?: string;
 }
 
 interface DownloadClientManagementProps {
   mode: 'wizard' | 'settings';
   initialClients?: DownloadClient[];
   onClientsChange?: (clients: DownloadClient[]) => void;
+  downloadDir?: string;
 }
 
 export function DownloadClientManagement({
   mode,
   initialClients = [],
   onClientsChange,
+  downloadDir: downloadDirProp,
 }: DownloadClientManagementProps) {
   const [clients, setClients] = useState<DownloadClient[]>(initialClients);
   const [modalState, setModalState] = useState<{
     isOpen: boolean;
     mode: 'add' | 'edit';
-    clientType?: 'qbittorrent' | 'sabnzbd';
+    clientType?: DownloadClientType;
     currentClient?: DownloadClient;
   }>({ isOpen: false, mode: 'add' });
   const [loading, setLoading] = useState(false);
@@ -51,13 +55,22 @@ export function DownloadClientManagement({
     clientId?: string;
     clientName?: string;
   }>({ isOpen: false });
+  const [resolvedDownloadDir, setResolvedDownloadDir] = useState(downloadDirProp || '/downloads');
 
-  // Fetch clients when in settings mode
+  // Fetch clients and download dir when in settings mode
   useEffect(() => {
     if (mode === 'settings') {
       fetchClients();
+      fetchDownloadDir();
     }
   }, [mode]);
+
+  // Sync downloadDir prop (wizard mode)
+  useEffect(() => {
+    if (downloadDirProp) {
+      setResolvedDownloadDir(downloadDirProp);
+    }
+  }, [downloadDirProp]);
 
   // Sync with parent when clients change
   useEffect(() => {
@@ -93,11 +106,26 @@ export function DownloadClientManagement({
     }
   };
 
-  const handleAddClient = (type: 'qbittorrent' | 'sabnzbd') => {
-    // Check if this type already exists
-    const existingClient = clients.find(c => c.type === type && c.enabled);
+  const fetchDownloadDir = async () => {
+    try {
+      const response = await fetchWithAuth('/api/admin/settings');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.paths?.downloadDir) {
+          setResolvedDownloadDir(data.paths.downloadDir);
+        }
+      }
+    } catch {
+      // Non-critical: fall back to default
+    }
+  };
+
+  const handleAddClient = (type: DownloadClientType) => {
+    // Check if the protocol is already taken (regardless of enabled status)
+    const protocol = CLIENT_PROTOCOL_MAP[type];
+    const existingClient = clients.find(c => CLIENT_PROTOCOL_MAP[c.type] === protocol);
     if (existingClient) {
-      setError(`A ${type === 'qbittorrent' ? 'qBittorrent' : 'SABnzbd'} client is already configured.`);
+      setError(`A ${protocol} client (${getClientDisplayName(existingClient.type)}) is already configured. Remove it first to add a different ${protocol} client.`);
       return;
     }
 
@@ -210,8 +238,8 @@ export function DownloadClientManagement({
     }
   };
 
-  const hasQBittorrent = clients.some(c => c.type === 'qbittorrent' && c.enabled);
-  const hasSABnzbd = clients.some(c => c.type === 'sabnzbd' && c.enabled);
+  const hasTorrentClient = clients.some(c => CLIENT_PROTOCOL_MAP[c.type] === 'torrent');
+  const hasUsenetClient = clients.some(c => CLIENT_PROTOCOL_MAP[c.type] === 'usenet');
 
   return (
     <div className="space-y-6">
@@ -233,9 +261,9 @@ export function DownloadClientManagement({
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
           Add Download Client
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* qBittorrent Card */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6">
+          <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6${hasTorrentClient ? ' opacity-50' : ''}`}>
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
@@ -249,9 +277,9 @@ export function DownloadClientManagement({
                 Torrent
               </span>
             </div>
-            {hasQBittorrent ? (
+            {hasTorrentClient ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                Already configured
+                Protocol already configured
               </div>
             ) : (
               <Button
@@ -265,8 +293,39 @@ export function DownloadClientManagement({
             )}
           </div>
 
+          {/* Transmission Card */}
+          <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6${hasTorrentClient ? ' opacity-50' : ''}`}>
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                  Transmission
+                </h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Torrent downloads
+                </p>
+              </div>
+              <span className="inline-block text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium">
+                Torrent
+              </span>
+            </div>
+            {hasTorrentClient ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                Protocol already configured
+              </div>
+            ) : (
+              <Button
+                onClick={() => handleAddClient('transmission')}
+                variant="primary"
+                size="sm"
+                disabled={loading}
+              >
+                Add Transmission
+              </Button>
+            )}
+          </div>
+
           {/* SABnzbd Card */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6">
+          <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6${hasUsenetClient ? ' opacity-50' : ''}`}>
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
@@ -280,9 +339,9 @@ export function DownloadClientManagement({
                 Usenet
               </span>
             </div>
-            {hasSABnzbd ? (
+            {hasUsenetClient ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                Already configured
+                Protocol already configured
               </div>
             ) : (
               <Button
@@ -292,6 +351,37 @@ export function DownloadClientManagement({
                 disabled={loading}
               >
                 Add SABnzbd
+              </Button>
+            )}
+          </div>
+
+          {/* NZBGet Card */}
+          <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6${hasUsenetClient ? ' opacity-50' : ''}`}>
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                  NZBGet
+                </h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Usenet/NZB downloads
+                </p>
+              </div>
+              <span className="inline-block text-xs px-2 py-1 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 font-medium">
+                Usenet
+              </span>
+            </div>
+            {hasUsenetClient ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                Protocol already configured
+              </div>
+            ) : (
+              <Button
+                onClick={() => handleAddClient('nzbget')}
+                variant="primary"
+                size="sm"
+                disabled={loading}
+              >
+                Add NZBGet
               </Button>
             )}
           </div>
@@ -338,6 +428,7 @@ export function DownloadClientManagement({
         initialClient={modalState.currentClient}
         onSave={handleSaveClient}
         apiMode={mode}
+        downloadDir={resolvedDownloadDir}
       />
 
       {/* Delete Confirmation Modal */}

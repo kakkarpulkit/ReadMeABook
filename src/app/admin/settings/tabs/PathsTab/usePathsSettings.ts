@@ -41,6 +41,7 @@ export function usePathsSettings({ paths, onChange, onValidationChange }: UsePat
           downloadDir: paths.downloadDir,
           mediaDir: paths.mediaDir,
           audiobookPathTemplate: paths.audiobookPathTemplate,
+          ebookPathTemplate: paths.ebookPathTemplate,
         }),
       });
 
