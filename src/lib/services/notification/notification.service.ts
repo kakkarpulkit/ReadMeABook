@@ -130,7 +130,7 @@ export class NotificationService {
 
     const encrypted = { ...config };
     for (const field of provider.sensitiveFields) {
-      if (encrypted[field] && !this.isEncrypted(encrypted[field])) {
+      if (encrypted[field] && !this.encryptionService.isEncryptedFormat(encrypted[field])) {
         encrypted[field] = this.encryptionService.encrypt(encrypted[field]);
       }
     }
@@ -156,23 +156,64 @@ export class NotificationService {
   }
 
   /**
+   * Re-encrypt any sensitive fields that were stored as plaintext due to
+   * the isEncrypted() false-positive bug (URLs with exactly 2 colons).
+   * Safe to call multiple times — skips already-encrypted values.
+   */
+  async reEncryptUnprotectedBackends(): Promise<number> {
+    let fixed = 0;
+
+    try {
+      const backends = await prisma.notificationBackend.findMany();
+
+      for (const backend of backends) {
+        const provider = getProvider(backend.type);
+        if (!provider) continue;
+
+        const config = backend.config as any;
+        let needsUpdate = false;
+        const updatedConfig = { ...config };
+
+        for (const field of provider.sensitiveFields) {
+          if (updatedConfig[field] && !this.encryptionService.isEncryptedFormat(updatedConfig[field])) {
+            updatedConfig[field] = this.encryptionService.encrypt(updatedConfig[field]);
+            needsUpdate = true;
+          }
+        }
+
+        if (needsUpdate) {
+          await prisma.notificationBackend.update({
+            where: { id: backend.id },
+            data: { config: updatedConfig },
+          });
+          fixed++;
+          logger.info(`Re-encrypted plaintext sensitive fields for backend: ${backend.name}`);
+        }
+      }
+
+      if (fixed > 0) {
+        logger.warn(`Re-encrypted ${fixed} backend(s) with unprotected sensitive fields`);
+      }
+    } catch (error) {
+      logger.error('Failed to re-encrypt backends', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return fixed;
+  }
+
+  /**
    * Decrypt sensitive config values
    */
   private decryptConfig(sensitiveFields: string[], config: any): any {
     const decrypted = { ...config };
     for (const field of sensitiveFields) {
-      if (decrypted[field] && this.isEncrypted(decrypted[field])) {
+      if (decrypted[field] && this.encryptionService.isEncryptedFormat(decrypted[field])) {
         decrypted[field] = this.encryptionService.decrypt(decrypted[field]);
       }
     }
     return decrypted;
-  }
-
-  /**
-   * Check if a value is encrypted (has iv:authTag:data format)
-   */
-  private isEncrypted(value: string): boolean {
-    return value.includes(':') && value.split(':').length === 3;
   }
 }
 

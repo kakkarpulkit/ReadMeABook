@@ -18,6 +18,7 @@ prismaMock.notificationBackend = {
 const encryptionMock = vi.hoisted(() => ({
   encrypt: vi.fn((value: string) => `enc:${value}`),
   decrypt: vi.fn((value: string) => value.replace('enc:', '')),
+  isEncryptedFormat: vi.fn((value: string) => typeof value === 'string' && value.startsWith('enc:')),
 }));
 
 const fetchMock = vi.hoisted(() => vi.fn());
@@ -196,10 +197,9 @@ describe('NotificationService', () => {
       const { NotificationService } = await import('@/lib/services/notification');
       const service = new NotificationService();
 
-      // Use iv:authTag:data format to pass isEncrypted() check
       await service.sendToBackend(
         'pushover',
-        { userKey: 'iv:tag:user123', appToken: 'iv:tag:app456', priority: 1 },
+        { userKey: 'enc:user123', appToken: 'enc:app456', priority: 1 },
         {
           event: 'request_approved',
           requestId: 'req-1',
@@ -210,8 +210,8 @@ describe('NotificationService', () => {
         }
       );
 
-      expect(encryptionMock.decrypt).toHaveBeenCalledWith('iv:tag:user123');
-      expect(encryptionMock.decrypt).toHaveBeenCalledWith('iv:tag:app456');
+      expect(encryptionMock.decrypt).toHaveBeenCalledWith('enc:user123');
+      expect(encryptionMock.decrypt).toHaveBeenCalledWith('enc:app456');
       expect(fetchMock).toHaveBeenCalled();
     });
 
@@ -516,6 +516,91 @@ describe('NotificationService', () => {
       expect(priorityField!.type).toBe('select');
       expect(priorityField!.options).toBeDefined();
       expect(priorityField!.options!.length).toBe(5);
+    });
+  });
+
+  describe('reEncryptUnprotectedBackends', () => {
+    it('re-encrypts plaintext sensitive fields stored due to isEncrypted bug', async () => {
+      // Simulate a backend with a Telegram URL stored as plaintext (the bug)
+      prismaMock.notificationBackend.findMany.mockResolvedValue([
+        {
+          id: 'backend-1',
+          type: 'apprise',
+          name: 'Telegram via Apprise',
+          config: {
+            serverUrl: 'http://apprise:8000',
+            urls: 'tgram://1234567890:PLPe1Hh-VhbRC3MoT5QngwkPHoMTD/-100181291455/',
+          },
+          events: ['request_available'],
+          enabled: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]);
+
+      prismaMock.notificationBackend.update.mockResolvedValue({} as any);
+
+      // Mock isEncryptedFormat to return false for the plaintext URL
+      encryptionMock.isEncryptedFormat.mockImplementation(
+        (value: string) => typeof value === 'string' && value.startsWith('enc:')
+      );
+
+      const { NotificationService } = await import('@/lib/services/notification');
+      const service = new NotificationService();
+
+      const fixed = await service.reEncryptUnprotectedBackends();
+
+      expect(fixed).toBe(1);
+      expect(encryptionMock.encrypt).toHaveBeenCalledWith(
+        'tgram://1234567890:PLPe1Hh-VhbRC3MoT5QngwkPHoMTD/-100181291455/'
+      );
+      expect(prismaMock.notificationBackend.update).toHaveBeenCalledWith({
+        where: { id: 'backend-1' },
+        data: {
+          config: {
+            serverUrl: 'http://apprise:8000',
+            urls: 'enc:tgram://1234567890:PLPe1Hh-VhbRC3MoT5QngwkPHoMTD/-100181291455/',
+          },
+        },
+      });
+    });
+
+    it('skips backends with already-encrypted fields', async () => {
+      prismaMock.notificationBackend.findMany.mockResolvedValue([
+        {
+          id: 'backend-1',
+          type: 'discord',
+          name: 'Discord',
+          config: { webhookUrl: 'enc:https://discord.com/webhook', username: 'Bot' },
+          events: ['request_available'],
+          enabled: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]);
+
+      encryptionMock.isEncryptedFormat.mockImplementation(
+        (value: string) => typeof value === 'string' && value.startsWith('enc:')
+      );
+
+      const { NotificationService } = await import('@/lib/services/notification');
+      const service = new NotificationService();
+
+      const fixed = await service.reEncryptUnprotectedBackends();
+
+      expect(fixed).toBe(0);
+      expect(prismaMock.notificationBackend.update).not.toHaveBeenCalled();
+    });
+
+    it('returns 0 when no backends exist', async () => {
+      prismaMock.notificationBackend.findMany.mockResolvedValue([]);
+
+      const { NotificationService } = await import('@/lib/services/notification');
+      const service = new NotificationService();
+
+      const fixed = await service.reEncryptUnprotectedBackends();
+
+      expect(fixed).toBe(0);
     });
   });
 

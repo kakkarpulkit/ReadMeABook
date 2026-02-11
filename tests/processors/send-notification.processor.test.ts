@@ -4,6 +4,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NotificationEvent } from '@/lib/constants/notification-events';
 
 const notificationServiceMock = vi.hoisted(() => ({
   sendNotification: vi.fn(),
@@ -92,7 +93,7 @@ describe('processSendNotification', () => {
   it('processes all event types correctly', async () => {
     const { processSendNotification } = await import('@/lib/processors/send-notification.processor');
 
-    const events: Array<'request_pending_approval' | 'request_approved' | 'request_available' | 'request_error'> = [
+    const events: NotificationEvent[] = [
       'request_pending_approval',
       'request_approved',
       'request_available',

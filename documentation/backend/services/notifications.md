@@ -7,7 +7,7 @@ Sends notifications for audiobook request events (pending approval, approved, av
 
 ## Key Details
 - **Backends:** Apprise (API), Discord (webhooks), ntfy (API), Pushover (API)
-- **Events:** request_pending_approval, request_approved, request_available, request_error
+- **Events:** request_pending_approval, request_approved, request_available, request_error, issue_reported
 - **Encryption:** AES-256-GCM for sensitive config (webhook URLs, API keys, notification URLs)
 - **Delivery:** Async via Bull job queue (priority 5)
 - **Failure Handling:** Non-blocking, Promise.allSettled (one backend fails, others succeed)
@@ -35,6 +35,7 @@ model NotificationBackend {
 | request_approved | Admin approves OR auto-approval | Request approved (manual or auto) |
 | request_available | Plex/ABS scan completes | Audiobook available in library |
 | request_error | Download/import fails | Request failed at any stage |
+| issue_reported | User reports issue | User reports problem with available audiobook |
 
 ## Notification Triggers
 
@@ -67,6 +68,10 @@ model NotificationBackend {
 - After `status: 'failed'` or `status: 'warn'` update → request_error
 - Includes error message in payload
 
+**Issue Reported (reported-issue.service.ts)**
+- After user reports issue with available audiobook → issue_reported
+- Payload: issue ID (as requestId), book title/author, reporter username, reason (as message)
+
 ## Configuration Encryption
 
 **Encrypted Values:**
@@ -91,13 +96,14 @@ model NotificationBackend {
 - Format: Event title + book details + user + error (if applicable)
 
 **Discord (Rich Embeds):**
-- Color-coded by event (yellow=pending, green=approved, blue=available, red=error)
-- Fields: Title, Author, Requested By, Error (if applicable)
-- Footer: Request ID
+- Color-coded by event (yellow=pending, green=approved, blue=available, red=error, orange=issue)
+- Fields: Title, Author, Requested/Reported By, Error/Reason (if applicable)
+- Footer: Request/Issue ID
 - Timestamp: Event time
 
-**ntfy (JSON with Tags):**
-- Tags: mailbox_with_mail, white_check_mark, tada, x (rendered as emojis by ntfy)
+**ntfy (JSON Publishing to Base URL):**
+- Endpoint: POST to base `serverUrl` (default: https://ntfy.sh), topic in JSON body
+- Tags: mailbox_with_mail, white_check_mark, tada, x, triangular_flag_on_post (rendered as emojis by ntfy)
 - Priority: Default (3) for pending/approved, High (4) for available/error
 - Format: Event title + book details + user + error (if applicable)
 - Auth: Optional Bearer token via `accessToken` config field
@@ -142,7 +148,7 @@ model NotificationBackend {
 **Modal Features:**
 - Type-first selection (user clicks "Add Discord" or "Add Pushover")
 - Password inputs for sensitive values
-- Event subscription checkboxes (4 events, default: available + error)
+- Event subscription checkboxes (5 events, default: available + error)
 - Test button (sends synchronous test notification)
 - Save button (validates and creates/updates backend)
 

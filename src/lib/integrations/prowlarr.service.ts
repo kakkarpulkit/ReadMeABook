@@ -87,7 +87,7 @@ export class ProwlarrService {
       headers: {
         'X-Api-Key': this.apiKey,
       },
-      timeout: 30000, // 30 seconds
+      timeout: 60000, // 60 seconds - some indexers (e.g. yggtorrent) enforce a 30s wait before download
       paramsSerializer: {
         serialize: (params) => {
           // Custom serializer to handle arrays correctly for Prowlarr API
@@ -314,7 +314,7 @@ export class ProwlarrService {
           limit: 100,
           extended: 1,
         },
-        timeout: 30000,
+        timeout: 60000,
         responseType: 'text', // Get XML as text
       });
 

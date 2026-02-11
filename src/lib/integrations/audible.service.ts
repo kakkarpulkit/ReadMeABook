@@ -8,9 +8,23 @@ import * as cheerio from 'cheerio';
 import { RMABLogger } from '../utils/logger';
 import { getConfigService } from '../services/config.service';
 import { AudibleRegion, AUDIBLE_REGIONS, DEFAULT_AUDIBLE_REGION } from '../types/audible';
+import {
+  pickUserAgent,
+  getBrowserHeaders,
+  jitteredBackoff,
+  AdaptivePacer,
+  FetchResultMeta,
+} from '../utils/scrape-resilience';
 
 // Module-level logger
 const logger = RMABLogger.create('Audible');
+
+/**
+ * Audible supports a pageSize query parameter (default ~20).
+ * Using 50 significantly reduces the number of HTTP requests needed
+ * for bulk operations like popular/new-release refreshes and search.
+ */
+const AUDIBLE_PAGE_SIZE = 50;
 
 export interface AudibleAudiobook {
   asin: string;
@@ -40,6 +54,8 @@ export class AudibleService {
   private baseUrl: string = 'https://www.audible.com';
   private region: AudibleRegion = 'us';
   private initialized: boolean = false;
+  private sessionUserAgent: string = '';
+  private pacer: AdaptivePacer = new AdaptivePacer();
 
   constructor() {
     // Client will be created lazily on first use
@@ -77,18 +93,16 @@ export class AudibleService {
       const configService = getConfigService();
       this.region = await configService.getAudibleRegion();
       this.baseUrl = AUDIBLE_REGIONS[this.region].baseUrl;
+      this.sessionUserAgent = pickUserAgent();
+      this.pacer.reset();
 
       logger.info(`Initializing Audible service with region: ${this.region} (${this.baseUrl})`);
 
-      // Create axios client with region-specific base URL
+      // Create axios client with region-specific base URL and realistic browser headers
       this.client = axios.create({
         baseURL: this.baseUrl,
         timeout: 15000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
+        headers: getBrowserHeaders(this.sessionUserAgent),
         params: {
           ipRedirectOverride: 'true', // Prevent IP-based region redirects
           language: 'english', // Force English locale (prevents IP-based language serving for non-English IPs)
@@ -101,14 +115,12 @@ export class AudibleService {
       // Fallback to default region
       this.region = DEFAULT_AUDIBLE_REGION;
       this.baseUrl = AUDIBLE_REGIONS[this.region].baseUrl;
+      this.sessionUserAgent = pickUserAgent();
+      this.pacer.reset();
       this.client = axios.create({
         baseURL: this.baseUrl,
         timeout: 15000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
+        headers: getBrowserHeaders(this.sessionUserAgent),
         params: {
           ipRedirectOverride: 'true',
           language: 'english',
@@ -119,23 +131,28 @@ export class AudibleService {
   }
 
   /**
-   * Fetch with retry logic and exponential backoff
-   * Retries on network errors and rate limiting (503, 429)
+   * Fetch with retry logic and jittered exponential backoff.
+   * Returns the axios response plus metadata about retries encountered.
    */
   private async fetchWithRetry(
     url: string,
     config: any = {},
     maxRetries: number = 5
-  ): Promise<any> {
+  ): Promise<{ data: any; meta: FetchResultMeta }> {
     let lastError: Error | null = null;
+    let retriesUsed = 0;
+    let encountered503 = false;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        return await this.client.get(url, config);
+        const response = await this.client.get(url, config);
+        return { data: response, meta: { retriesUsed, encountered503 } };
       } catch (error: any) {
         lastError = error;
         const status = error.response?.status;
         const isRetryable = !status || status === 503 || status === 429 || status >= 500;
+
+        if (status === 503) encountered503 = true;
 
         // Don't retry on 404, 403, etc.
         if (!isRetryable) {
@@ -147,8 +164,10 @@ export class AudibleService {
           break;
         }
 
-        // Exponential backoff: 2^attempt * 1000ms (1s, 2s, 4s, 8s...)
-        const backoffMs = Math.pow(2, attempt) * 1000;
+        retriesUsed++;
+
+        // Jittered exponential backoff instead of predictable doubling
+        const backoffMs = jitteredBackoff(attempt);
         logger.info(` Request failed (${status || 'network error'}), retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})...`);
 
         await this.delay(backoffMs);
@@ -210,15 +229,18 @@ export class AudibleService {
 
     const audiobooks: AudibleAudiobook[] = [];
     let page = 1;
-    const maxPages = Math.ceil(limit / 20); // Audible shows ~20 items per page
+    const maxPages = Math.ceil(limit / AUDIBLE_PAGE_SIZE);
+
+    this.pacer.reset();
 
     while (audiobooks.length < limit && page <= maxPages) {
       try {
         logger.info(` Fetching page ${page}/${maxPages}...`);
 
-        const response = await this.fetchWithRetry('/adblbestsellers', {
+        const { data: response, meta } = await this.fetchWithRetry('/adblbestsellers', {
           params: {
             ipRedirectOverride: 'true', // Explicitly include to prevent IP-based region redirects
+            pageSize: AUDIBLE_PAGE_SIZE,
             ...(page > 1 ? { page } : {}),
           },
         });
@@ -269,17 +291,17 @@ export class AudibleService {
 
         logger.info(` Found ${foundOnPage} audiobooks on page ${page}`);
 
-        // If we got fewer than expected, probably no more pages
-        if (foundOnPage < 10) {
+        // If we got significantly fewer than requested, probably no more pages
+        if (foundOnPage < AUDIBLE_PAGE_SIZE / 2) {
           logger.info(` Reached end of available pages`);
           break;
         }
 
         page++;
 
-        // Add delay between pages to respect rate limiting
+        // Adaptive delay between pages based on retry pressure
         if (page <= maxPages && audiobooks.length < limit) {
-          await this.delay(1500);
+          await this.delay(this.pacer.reportPageResult(meta));
         }
       } catch (error) {
         logger.error(`Failed to fetch page ${page} of popular audiobooks`, {
@@ -305,15 +327,18 @@ export class AudibleService {
 
     const audiobooks: AudibleAudiobook[] = [];
     let page = 1;
-    const maxPages = Math.ceil(limit / 20); // Audible shows ~20 items per page
+    const maxPages = Math.ceil(limit / AUDIBLE_PAGE_SIZE);
+
+    this.pacer.reset();
 
     while (audiobooks.length < limit && page <= maxPages) {
       try {
         logger.info(` Fetching page ${page}/${maxPages}...`);
 
-        const response = await this.fetchWithRetry('/newreleases', {
+        const { data: response, meta } = await this.fetchWithRetry('/newreleases', {
           params: {
             ipRedirectOverride: 'true', // Explicitly include to prevent IP-based region redirects
+            pageSize: AUDIBLE_PAGE_SIZE,
             ...(page > 1 ? { page } : {}),
           },
         });
@@ -363,17 +388,17 @@ export class AudibleService {
 
         logger.info(` Found ${foundOnPage} audiobooks on page ${page}`);
 
-        // If we got fewer than expected, probably no more pages
-        if (foundOnPage < 10) {
+        // If we got significantly fewer than requested, probably no more pages
+        if (foundOnPage < AUDIBLE_PAGE_SIZE / 2) {
           logger.info(` Reached end of available pages`);
           break;
         }
 
         page++;
 
-        // Add delay between pages to respect rate limiting
+        // Adaptive delay between pages based on retry pressure
         if (page <= maxPages && audiobooks.length < limit) {
-          await this.delay(1500);
+          await this.delay(this.pacer.reportPageResult(meta));
         }
       } catch (error) {
         logger.error(`Failed to fetch page ${page} of new releases`, {
@@ -398,10 +423,11 @@ export class AudibleService {
     try {
       logger.info(` Searching for "${query}"...`);
 
-      const response = await this.fetchWithRetry('/search', {
+      const { data: response } = await this.fetchWithRetry('/search', {
         params: {
           ipRedirectOverride: 'true', // Explicitly include to prevent IP-based region redirects
           keywords: query,
+          pageSize: AUDIBLE_PAGE_SIZE,
           page,
         },
       });
@@ -470,7 +496,7 @@ export class AudibleService {
         results: audiobooks,
         totalResults,
         page,
-        hasMore: audiobooks.length > 0 && totalResults > page * 20,
+        hasMore: audiobooks.length > 0 && totalResults > page * AUDIBLE_PAGE_SIZE,
       };
     } catch (error) {
       logger.error('Search failed', { error: error instanceof Error ? error.message : String(error) });
@@ -581,7 +607,7 @@ export class AudibleService {
    */
   private async scrapeAudibleDetails(asin: string): Promise<AudibleAudiobook | null> {
     try {
-      const response = await this.fetchWithRetry(`/pd/${asin}`, {
+      const { data: response } = await this.fetchWithRetry(`/pd/${asin}`, {
         params: {
           ipRedirectOverride: 'true', // Explicitly include to prevent IP-based region redirects
         },

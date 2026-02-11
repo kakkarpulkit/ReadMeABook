@@ -13,6 +13,16 @@ export type {
   ProviderMetadata,
 } from './INotificationProvider';
 
+// Centralized event constants (re-exported for convenience)
+export {
+  NOTIFICATION_EVENTS,
+  NOTIFICATION_EVENT_KEYS,
+  EVENT_LABELS,
+  getEventMeta,
+  getEventLabel,
+} from '@/lib/constants/notification-events';
+export type { NotificationSeverity, NotificationPriority, NotificationEventMeta } from '@/lib/constants/notification-events';
+
 // Core service
 export {
   NotificationService,

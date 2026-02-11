@@ -18,6 +18,7 @@ prismaMock.notificationBackend = {
 const encryptionMock = vi.hoisted(() => ({
   encrypt: vi.fn((value: string) => `enc:${value}`),
   decrypt: vi.fn((value: string) => value.replace('enc:', '')),
+  isEncryptedFormat: vi.fn((value: string) => typeof value === 'string' && value.startsWith('enc:')),
 }));
 
 const fetchMock = vi.hoisted(() => vi.fn());
@@ -370,14 +371,12 @@ describe('AppriseProvider', () => {
       const { NotificationService } = await import('@/lib/services/notification');
       const service = new NotificationService();
 
-      // Use iv:authTag:data format to pass isEncrypted() check
-      // Note: the value must have exactly 3 colon-separated segments
       await service.sendToBackend(
         'apprise',
         {
           serverUrl: 'http://apprise:8000',
-          urls: 'iv:tag:encryptedUrlsData',
-          authToken: 'iv:tag:mytoken123',
+          urls: 'enc:encryptedUrlsData',
+          authToken: 'enc:mytoken123',
         },
         {
           event: 'request_approved',
@@ -390,16 +389,16 @@ describe('AppriseProvider', () => {
       );
 
       // Verify decrypt was called for the sensitive fields
-      expect(encryptionMock.decrypt).toHaveBeenCalledWith('iv:tag:encryptedUrlsData');
-      expect(encryptionMock.decrypt).toHaveBeenCalledWith('iv:tag:mytoken123');
+      expect(encryptionMock.decrypt).toHaveBeenCalledWith('enc:encryptedUrlsData');
+      expect(encryptionMock.decrypt).toHaveBeenCalledWith('enc:mytoken123');
 
       // Verify the decrypted values reach the fetch call
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const fetchCall = fetchMock.mock.calls[0];
-      expect(fetchCall[1].headers['Authorization']).toBe('Bearer iv:tag:mytoken123');
+      expect(fetchCall[1].headers['Authorization']).toBe('Bearer mytoken123');
 
       const body = JSON.parse(fetchCall[1].body);
-      expect(body.urls).toBe('iv:tag:encryptedUrlsData');
+      expect(body.urls).toBe('encryptedUrlsData');
     });
 
     it('does not decrypt non-sensitive fields', async () => {

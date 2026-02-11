@@ -4,12 +4,13 @@
  */
 
 import { getJobQueueService, ScanPlexPayload } from './job-queue.service';
+import { getNotificationService } from './notification';
 import { prisma } from '../db';
 import { RMABLogger } from '../utils/logger';
 
 const logger = RMABLogger.create('Scheduler');
 
-export type ScheduledJobType = 'plex_library_scan' | 'plex_recently_added_check' | 'audible_refresh' | 'retry_missing_torrents' | 'retry_failed_imports' | 'cleanup_seeded_torrents' | 'monitor_rss_feeds';
+export type ScheduledJobType = 'plex_library_scan' | 'plex_recently_added_check' | 'audible_refresh' | 'retry_missing_torrents' | 'retry_failed_imports' | 'cleanup_seeded_torrents' | 'monitor_rss_feeds' | 'sync_goodreads_shelves';
 
 export interface ScheduledJob {
   id: string;
@@ -48,6 +49,9 @@ export class SchedulerService {
    */
   async start(): Promise<void> {
     logger.info('Initializing scheduler service...');
+
+    // Re-encrypt any notification backends with plaintext sensitive fields
+    await getNotificationService().reEncryptUnprotectedBackends();
 
     // Create default jobs if they don't exist
     await this.ensureDefaultJobs();
@@ -112,6 +116,13 @@ export class SchedulerService {
         name: 'Monitor RSS Feeds',
         type: 'monitor_rss_feeds' as ScheduledJobType,
         schedule: '*/15 * * * *', // Every 15 minutes
+        enabled: true, // Enable by default
+        payload: {},
+      },
+      {
+        name: 'Sync Goodreads Shelves',
+        type: 'sync_goodreads_shelves' as ScheduledJobType,
+        schedule: '0 */6 * * *', // Every 6 hours
         enabled: true, // Enable by default
         payload: {},
       },
@@ -313,6 +324,9 @@ export class SchedulerService {
         break;
       case 'monitor_rss_feeds':
         bullJobId = await this.triggerMonitorRssFeeds(job);
+        break;
+      case 'sync_goodreads_shelves':
+        bullJobId = await this.triggerSyncGoodreadsShelves(job);
         break;
       default:
         throw new Error(`Unknown job type: ${job.type}`);
@@ -577,6 +591,13 @@ export class SchedulerService {
    */
   private async triggerCleanupSeededTorrents(job: any): Promise<string> {
     return await this.jobQueue.addCleanupSeededTorrentsJob(job.id);
+  }
+
+  /**
+   * Trigger Goodreads shelves sync
+   */
+  private async triggerSyncGoodreadsShelves(job: any): Promise<string> {
+    return await this.jobQueue.addSyncGoodreadsShelvesJob(job.id);
   }
 }
 

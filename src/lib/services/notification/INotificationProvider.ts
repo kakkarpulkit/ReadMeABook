@@ -3,24 +3,21 @@
  * Documentation: documentation/backend/services/notifications.md
  */
 
-// Event types
-export type NotificationEvent =
-  | 'request_pending_approval'
-  | 'request_approved'
-  | 'request_available'
-  | 'request_error';
+// Re-export event types from central source of truth
+export type { NotificationEvent } from '@/lib/constants/notification-events';
 
 // Backend type — string-based, registry is the runtime source of truth
 export type NotificationBackendType = string;
 
 // Notification payload
 export interface NotificationPayload {
-  event: NotificationEvent;
-  requestId: string;
+  event: import('@/lib/constants/notification-events').NotificationEvent;
+  requestId?: string;
+  issueId?: string;
   title: string;
   author: string;
   userName: string;
-  message?: string; // For error events
+  message?: string; // For error/issue events
   timestamp: Date;
 }
 

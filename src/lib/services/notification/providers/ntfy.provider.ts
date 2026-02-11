@@ -4,6 +4,7 @@
  */
 
 import { INotificationProvider, NotificationPayload, ProviderMetadata } from '../INotificationProvider';
+import { getEventMeta, type NotificationSeverity, type NotificationPriority } from '@/lib/constants/notification-events';
 
 export interface NtfyConfig {
   serverUrl?: string;
@@ -14,20 +15,18 @@ export interface NtfyConfig {
 
 const DEFAULT_SERVER_URL = 'https://ntfy.sh';
 
-// ntfy priorities by event type (1=min, 2=low, 3=default, 4=high, 5=urgent)
-const NTFY_PRIORITIES = {
-  request_pending_approval: 3, // Default
-  request_approved: 3, // Default
-  request_available: 4, // High
-  request_error: 4, // High
+// ntfy priorities by notification priority (1=min, 2=low, 3=default, 4=high, 5=urgent)
+const PRIORITY_MAP: Record<NotificationPriority, number> = {
+  normal: 3,
+  high: 4,
 };
 
-// ntfy tags (emojis) by event type
-const NTFY_TAGS = {
-  request_pending_approval: ['mailbox_with_mail'],
-  request_approved: ['white_check_mark'],
-  request_available: ['tada'],
-  request_error: ['x'],
+// ntfy tags (emojis) by severity
+const SEVERITY_TAGS: Record<NotificationSeverity, string[]> = {
+  info: ['mailbox_with_mail'],
+  success: ['white_check_mark'],
+  error: ['x'],
+  warning: ['triangular_flag_on_post'],
 };
 
 export class NtfyProvider implements INotificationProvider {
@@ -48,10 +47,12 @@ export class NtfyProvider implements INotificationProvider {
 
   async send(config: Record<string, any>, payload: NotificationPayload): Promise<void> {
     const ntfyConfig = config as unknown as NtfyConfig;
+    const meta = getEventMeta(payload.event);
     const { title, message } = this.formatMessage(payload);
 
-    const serverUrl = (ntfyConfig.serverUrl || DEFAULT_SERVER_URL).replace(/\/+$/, '');
-    const url = `${serverUrl}/${ntfyConfig.topic}`;
+    // ntfy JSON publishing requires POSTing to the base server URL (not the topic URL).
+    // The topic is included in the JSON body. See: https://docs.ntfy.sh/publish/#publish-as-json
+    const url = (ntfyConfig.serverUrl || DEFAULT_SERVER_URL).replace(/\/+$/, '');
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -65,8 +66,8 @@ export class NtfyProvider implements INotificationProvider {
       topic: ntfyConfig.topic,
       title,
       message,
-      priority: ntfyConfig.priority ?? NTFY_PRIORITIES[payload.event],
-      tags: NTFY_TAGS[payload.event],
+      priority: ntfyConfig.priority ?? PRIORITY_MAP[meta.priority],
+      tags: SEVERITY_TAGS[meta.severity],
     };
 
     const response = await fetch(url, {
@@ -83,26 +84,21 @@ export class NtfyProvider implements INotificationProvider {
 
   private formatMessage(payload: NotificationPayload): { title: string; message: string } {
     const { event, title, author, userName, message } = payload;
+    const meta = getEventMeta(event);
 
-    const eventTitles = {
-      request_pending_approval: 'New Request Pending Approval',
-      request_approved: 'Request Approved',
-      request_available: 'Audiobook Available',
-      request_error: 'Request Error',
-    };
-
+    const isIssue = event === 'issue_reported';
     const messageLines = [
-      `📚 ${title}`,
-      `✍️ ${author}`,
-      `👤 Requested by: ${userName}`,
+      `\u{1F4DA} ${title}`,
+      `\u270D\uFE0F ${author}`,
+      `\u{1F464} ${isIssue ? 'Reported by' : 'Requested by'}: ${userName}`,
     ];
 
     if (message) {
-      messageLines.push(`⚠️ Error: ${message}`);
+      messageLines.push(isIssue ? `\u{1F4DD} Reason: ${message}` : `\u26A0\uFE0F Error: ${message}`);
     }
 
     return {
-      title: eventTitles[event],
+      title: meta.title,
       message: messageLines.join('\n'),
     };
   }

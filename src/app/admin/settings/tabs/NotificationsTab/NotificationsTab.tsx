@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { RMABLogger } from '@/lib/utils/logger';
 import { fetchWithAuth } from '@/lib/utils/api';
+import { EVENT_LABELS } from '@/lib/constants/notification-events';
 
 const logger = RMABLogger.create('NotificationsTab');
 
@@ -43,12 +44,7 @@ interface ModalState {
   backend?: NotificationBackend;
 }
 
-const eventLabels: Record<string, string> = {
-  request_pending_approval: 'Request Pending Approval',
-  request_approved: 'Request Approved',
-  request_available: 'Audiobook Available',
-  request_error: 'Request Error',
-};
+const eventLabels: Record<string, string> = EVENT_LABELS;
 
 export function NotificationsTab() {
   const [backends, setBackends] = useState<NotificationBackend[]>([]);

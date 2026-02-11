@@ -26,6 +26,7 @@ export interface Audiobook {
   requestStatus?: string | null;  // Status of request (if any)
   requestId?: string | null;  // ID of request (if any)
   requestedByUsername?: string | null;  // Username who requested (only if not current user)
+  hasReportedIssue?: boolean;  // True if an open issue exists for this audiobook
 }
 
 export function useAudiobooks(type: 'popular' | 'new-releases', limit: number = 20, page: number = 1) {

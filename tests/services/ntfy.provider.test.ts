@@ -18,6 +18,7 @@ prismaMock.notificationBackend = {
 const encryptionMock = vi.hoisted(() => ({
   encrypt: vi.fn((value: string) => `enc:${value}`),
   decrypt: vi.fn((value: string) => value.replace('enc:', '')),
+  isEncryptedFormat: vi.fn((value: string) => typeof value === 'string' && value.startsWith('enc:')),
 }));
 
 const fetchMock = vi.hoisted(() => vi.fn());
@@ -65,7 +66,8 @@ describe('NtfyProvider', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
       const fetchCall = fetchMock.mock.calls[0];
-      expect(fetchCall[0]).toBe('https://ntfy.example.com/audiobooks');
+      // ntfy JSON publishing: POST to base server URL, topic is in JSON body
+      expect(fetchCall[0]).toBe('https://ntfy.example.com');
       expect(fetchCall[1].method).toBe('POST');
       expect(fetchCall[1].headers['Content-Type']).toBe('application/json');
       expect(fetchCall[1].headers['Authorization']).toBe('Bearer tk_mytoken123');
@@ -104,7 +106,7 @@ describe('NtfyProvider', () => {
       );
 
       const fetchCall = fetchMock.mock.calls[0];
-      expect(fetchCall[0]).toBe('https://ntfy.sh/audiobooks');
+      expect(fetchCall[0]).toBe('https://ntfy.sh');
     });
 
     it('does not include Authorization header when accessToken is not provided', async () => {
@@ -210,7 +212,7 @@ describe('NtfyProvider', () => {
       );
 
       const fetchCall = fetchMock.mock.calls[0];
-      expect(fetchCall[0]).toBe('https://ntfy.example.com/audiobooks');
+      expect(fetchCall[0]).toBe('https://ntfy.example.com');
     });
 
     it('throws descriptive error when API returns non-OK response', async () => {
@@ -275,13 +277,12 @@ describe('NtfyProvider', () => {
       const { NotificationService } = await import('@/lib/services/notification');
       const service = new NotificationService();
 
-      // Use iv:authTag:data format to pass isEncrypted() check
       await service.sendToBackend(
         'ntfy',
         {
           serverUrl: 'https://ntfy.example.com',
           topic: 'audiobooks',
-          accessToken: 'iv:tag:tk_mytoken123',
+          accessToken: 'enc:tk_mytoken123',
         },
         {
           event: 'request_approved',
@@ -294,12 +295,12 @@ describe('NtfyProvider', () => {
       );
 
       // Verify decrypt was called for the sensitive field
-      expect(encryptionMock.decrypt).toHaveBeenCalledWith('iv:tag:tk_mytoken123');
+      expect(encryptionMock.decrypt).toHaveBeenCalledWith('enc:tk_mytoken123');
 
       // Verify the decrypted value reaches the fetch call
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const fetchCall = fetchMock.mock.calls[0];
-      expect(fetchCall[1].headers['Authorization']).toBe('Bearer iv:tag:tk_mytoken123');
+      expect(fetchCall[1].headers['Authorization']).toBe('Bearer tk_mytoken123');
     });
 
     it('does not decrypt non-sensitive fields', async () => {

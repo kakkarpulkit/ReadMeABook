@@ -4,6 +4,7 @@
  */
 
 import { INotificationProvider, NotificationPayload, ProviderMetadata } from '../INotificationProvider';
+import { getEventMeta, type NotificationPriority } from '@/lib/constants/notification-events';
 
 export interface PushoverConfig {
   userKey: string;
@@ -12,12 +13,10 @@ export interface PushoverConfig {
   priority?: number;
 }
 
-// Pushover priorities by event type
-const PUSHOVER_PRIORITIES = {
-  request_pending_approval: 0, // Normal
-  request_approved: 0, // Normal
-  request_available: 1, // High
-  request_error: 1, // High
+// Pushover priorities by notification priority (Normal=0, High=1)
+const PRIORITY_MAP: Record<NotificationPriority, number> = {
+  normal: 0,
+  high: 1,
 };
 
 export class PushoverProvider implements INotificationProvider {
@@ -48,6 +47,7 @@ export class PushoverProvider implements INotificationProvider {
 
   async send(config: Record<string, any>, payload: NotificationPayload): Promise<void> {
     const pushoverConfig = config as unknown as PushoverConfig;
+    const meta = getEventMeta(payload.event);
     const { title, message } = this.formatMessage(payload);
 
     const body = new URLSearchParams({
@@ -55,7 +55,7 @@ export class PushoverProvider implements INotificationProvider {
       user: pushoverConfig.userKey,
       title,
       message,
-      priority: String(pushoverConfig.priority ?? PUSHOVER_PRIORITIES[payload.event]),
+      priority: String(pushoverConfig.priority ?? PRIORITY_MAP[meta.priority]),
       ...(pushoverConfig.device && { device: pushoverConfig.device }),
     });
 
@@ -78,43 +78,23 @@ export class PushoverProvider implements INotificationProvider {
 
   private formatMessage(payload: NotificationPayload): { title: string; message: string } {
     const { event, title, author, userName, message } = payload;
+    const meta = getEventMeta(event);
 
-    let eventTitle = '';
-    let eventEmoji = '';
-
-    switch (event) {
-      case 'request_pending_approval':
-        eventTitle = 'New Request Pending Approval';
-        eventEmoji = '📬';
-        break;
-      case 'request_approved':
-        eventTitle = 'Request Approved';
-        eventEmoji = '✅';
-        break;
-      case 'request_available':
-        eventTitle = 'Audiobook Available';
-        eventEmoji = '🎉';
-        break;
-      case 'request_error':
-        eventTitle = 'Request Error';
-        eventEmoji = '❌';
-        break;
-    }
-
+    const isIssue = event === 'issue_reported';
     const messageLines = [
-      `${eventEmoji} ${eventTitle}`,
+      `${meta.emoji} ${meta.title}`,
       '',
-      `📚 ${title}`,
-      `✍️ ${author}`,
-      `👤 Requested by: ${userName}`,
+      `\u{1F4DA} ${title}`,
+      `\u270D\uFE0F ${author}`,
+      `\u{1F464} ${isIssue ? 'Reported by' : 'Requested by'}: ${userName}`,
     ];
 
     if (message) {
-      messageLines.push('', `⚠️ Error: ${message}`);
+      messageLines.push('', isIssue ? `\u{1F4DD} Reason: ${message}` : `\u26A0\uFE0F Error: ${message}`);
     }
 
     return {
-      title: eventTitle,
+      title: meta.title,
       message: messageLines.join('\n'),
     };
   }

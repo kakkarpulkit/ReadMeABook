@@ -4,6 +4,7 @@
  */
 
 import { INotificationProvider, NotificationPayload, ProviderMetadata } from '../INotificationProvider';
+import { getEventMeta, type NotificationSeverity } from '@/lib/constants/notification-events';
 
 export interface DiscordConfig {
   webhookUrl: string;
@@ -11,20 +12,12 @@ export interface DiscordConfig {
   avatarUrl?: string;
 }
 
-// Discord embed colors by event type
-const DISCORD_COLORS = {
-  request_pending_approval: 0xfbbf24, // yellow-400
-  request_approved: 0x22c55e, // green-500
-  request_available: 0x3b82f6, // blue-500
-  request_error: 0xef4444, // red-500
-};
-
-// Discord embed titles
-const DISCORD_TITLES = {
-  request_pending_approval: '📬 New Request Pending Approval',
-  request_approved: '✅ Request Approved',
-  request_available: '🎉 Audiobook Available',
-  request_error: '❌ Request Error',
+// Discord embed colors by severity
+const SEVERITY_COLORS: Record<NotificationSeverity, number> = {
+  info: 0xfbbf24,    // yellow-400
+  success: 0x22c55e, // green-500
+  error: 0xef4444,   // red-500
+  warning: 0xf97316, // orange-500
 };
 
 export class DiscordProvider implements INotificationProvider {
@@ -67,23 +60,25 @@ export class DiscordProvider implements INotificationProvider {
 
   private formatEmbed(payload: NotificationPayload): any {
     const { event, title, author, userName, message, requestId, timestamp } = payload;
+    const meta = getEventMeta(event);
 
+    const isIssue = event === 'issue_reported';
     const fields = [
       { name: 'Title', value: title, inline: false },
       { name: 'Author', value: author, inline: true },
-      { name: 'Requested By', value: userName, inline: true },
+      { name: isIssue ? 'Reported By' : 'Requested By', value: userName, inline: true },
     ];
 
     if (message) {
-      fields.push({ name: 'Error', value: message, inline: false });
+      fields.push({ name: isIssue ? 'Reason' : 'Error', value: message, inline: false });
     }
 
     return {
-      title: DISCORD_TITLES[event],
-      color: DISCORD_COLORS[event],
+      title: `${meta.emoji} ${meta.title}`,
+      color: SEVERITY_COLORS[meta.severity],
       fields,
       footer: {
-        text: `Request ID: ${requestId}`,
+        text: isIssue ? `Issue ID: ${payload.issueId}` : `Request ID: ${requestId}`,
       },
       timestamp: timestamp.toISOString(),
     };

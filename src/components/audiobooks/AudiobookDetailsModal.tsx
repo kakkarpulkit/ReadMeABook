@@ -16,6 +16,7 @@ import { useCreateRequest, useEbookStatus, useFetchEbookByAsin } from '@/lib/hoo
 import { useAuth } from '@/contexts/AuthContext';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { InteractiveTorrentSearchModal } from '@/components/requests/InteractiveTorrentSearchModal';
+import { ReportIssueModal } from '@/components/audiobooks/ReportIssueModal';
 
 interface AudiobookDetailsModalProps {
   asin: string;
@@ -27,6 +28,7 @@ interface AudiobookDetailsModalProps {
   isAvailable?: boolean;
   requestedByUsername?: string | null;
   hideRequestActions?: boolean;
+  hasReportedIssue?: boolean;
 }
 
 // Status helper
@@ -65,6 +67,7 @@ export function AudiobookDetailsModal({
   isAvailable = false,
   requestedByUsername = null,
   hideRequestActions = false,
+  hasReportedIssue = false,
 }: AudiobookDetailsModalProps) {
   const { user } = useAuth();
   const { squareCovers } = usePreferences();
@@ -79,6 +82,7 @@ export function AudiobookDetailsModal({
   const [mounted, setMounted] = useState(false);
   const [showInteractiveSearch, setShowInteractiveSearch] = useState(false);
   const [showInteractiveSearchEbook, setShowInteractiveSearchEbook] = useState(false);
+  const [showReportIssue, setShowReportIssue] = useState(false);
   const [asinCopied, setAsinCopied] = useState(false);
 
   const status = getStatusInfo(isAvailable, requestStatus, requestedByUsername);
@@ -316,6 +320,33 @@ export function AudiobookDetailsModal({
                     </div>
                   )}
 
+                  {/* Issue Reported Badge */}
+                  {isAvailable && hasReportedIssue && (
+                    <div className="mt-2 inline-flex">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                        </svg>
+                        Issue Reported
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Report Issue Button - inline with metadata, not in action bar */}
+                  {isAvailable && !hasReportedIssue && user && (
+                    <div className="mt-2 inline-flex">
+                      <button
+                        onClick={() => setShowReportIssue(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                        </svg>
+                        Report Issue
+                      </button>
+                    </div>
+                  )}
+
                   {/* Quick Metadata */}
                   <div className="mt-4 flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm text-gray-500 dark:text-gray-400">
                     {audiobook.durationMinutes && (
@@ -526,6 +557,7 @@ export function AudiobookDetailsModal({
                   )}
                 </>
               )}
+
             </div>
           </div>
         )}
@@ -593,6 +625,22 @@ export function AudiobookDetailsModal({
           />
         </div>,
         document.body
+      )}
+
+      {/* Report Issue Modal */}
+      {showReportIssue && audiobook && (
+        <ReportIssueModal
+          isOpen={showReportIssue}
+          onClose={() => setShowReportIssue(false)}
+          onSuccess={() => {
+            setShowReportIssue(false);
+            showNotification('Issue reported!');
+          }}
+          asin={asin}
+          bookTitle={audiobook.title}
+          bookAuthor={audiobook.author}
+          coverArtUrl={audiobook.coverArtUrl}
+        />
       )}
     </>
   );

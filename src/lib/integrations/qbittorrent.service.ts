@@ -1109,7 +1109,8 @@ export class QBittorrentService implements IDownloadClient {
       stalledDL: 'downloading',
       stalledUP: 'seeding',
       pausedDL: 'paused',
-      pausedUP: 'paused',
+      // pausedUP = download finished, paused on upload side (e.g. RDT-Client, ratio met)
+      pausedUP: 'seeding',
       queuedDL: 'queued',
       queuedUP: 'seeding',
       checkingDL: 'checking',
@@ -1125,7 +1126,8 @@ export class QBittorrentService implements IDownloadClient {
       forcedMetaDL: 'downloading',
       // qBittorrent v5.0+ renamed paused → stopped
       stoppedDL: 'paused',
-      stoppedUP: 'paused',
+      // stoppedUP = download finished, stopped on upload side (qBittorrent v5.0+)
+      stoppedUP: 'seeding',
       // Other states
       checkingResumeData: 'checking',
       moving: 'downloading',
@@ -1162,11 +1164,12 @@ export class QBittorrentService implements IDownloadClient {
       stalledDL: 'downloading',
       stalledUP: 'completed',
       pausedDL: 'paused',
-      pausedUP: 'paused',
+      // pausedUP = download finished, paused on upload side (e.g. RDT-Client, ratio met)
+      pausedUP: 'completed',
       queuedDL: 'queued',
       queuedUP: 'completed',
       checkingDL: 'checking',
-      checkingUP: 'checking',
+      checkingUP: 'completed',
       error: 'failed',
       missingFiles: 'failed',
       allocating: 'downloading',
@@ -1178,7 +1181,8 @@ export class QBittorrentService implements IDownloadClient {
       forcedMetaDL: 'downloading',
       // qBittorrent v5.0+ renamed paused → stopped
       stoppedDL: 'paused',
-      stoppedUP: 'paused',
+      // stoppedUP = download finished, stopped on upload side (qBittorrent v5.0+)
+      stoppedUP: 'completed',
       // Other states
       checkingResumeData: 'checking',
       moving: 'downloading',

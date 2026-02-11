@@ -175,19 +175,19 @@ interface TorrentInfo {
 }
 
 type TorrentState =
-  // Core states
+  // Core states (*DL = download phase, *UP = upload/post-download phase)
   | 'downloading' | 'uploading'
-  | 'stalledDL' | 'stalledUP'
-  | 'pausedDL' | 'pausedUP'
-  | 'queuedDL' | 'queuedUP'
-  | 'checkingDL' | 'checkingUP'
+  | 'stalledDL' | 'stalledUP'        // stalledUP → completed (download done)
+  | 'pausedDL' | 'pausedUP'          // pausedUP → completed (download done, paused seeding)
+  | 'queuedDL' | 'queuedUP'          // queuedUP → completed (download done)
+  | 'checkingDL' | 'checkingUP'      // checkingUP → completed (download done, rechecking)
   | 'error' | 'missingFiles' | 'allocating'
   // Forced states (user clicked "Force Resume")
-  | 'forcedDL' | 'forcedUP'
+  | 'forcedDL' | 'forcedUP'          // forcedUP → completed (download done)
   // Metadata fetching
   | 'metaDL' | 'forcedMetaDL'
   // qBittorrent v5.0+ (renamed paused → stopped)
-  | 'stoppedDL' | 'stoppedUP'
+  | 'stoppedDL' | 'stoppedUP'        // stoppedUP → completed (download done)
   // Other
   | 'checkingResumeData' | 'moving';
 ```
@@ -241,7 +241,13 @@ type TorrentState =
    - Adding all 8 missing states to `TorrentState` type union
    - Adding mappings to both `mapState()` (legacy) and `mapStateToDownloadStatus()` (unified interface)
    - `forcedUP` → `seeding`/`completed` enables monitor to trigger import
-   - `stoppedDL`/`stoppedUP` → `paused` ensures qBittorrent v5.x compatibility
+   - `stoppedDL` → `paused` ensures qBittorrent v5.x compatibility
+
+**16. pausedUP/stoppedUP mapped as paused instead of completed** - RDT-Client (and qBittorrent after ratio limits) transitions directly to `pausedUP`/`stoppedUP` without passing through `uploading`/`stalledUP`. The `*UP` suffix means the download phase is complete and the torrent is on the upload side. Both states were incorrectly mapped to `'paused'`, causing the monitor to re-schedule checks indefinitely instead of triggering file organization. Fixed by:
+   - `pausedUP` → `seeding` (unified) / `completed` (legacy) — triggers completion in monitor
+   - `stoppedUP` → `seeding` (unified) / `completed` (legacy) — same fix for qBittorrent v5.x
+   - `pausedDL`/`stoppedDL` remain `paused` — download phase genuinely paused
+   - Key insight: any `*UP` state is post-download; any `*DL` state is pre-completion
 
 ## Tech Stack
 

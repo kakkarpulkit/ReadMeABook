@@ -4,6 +4,7 @@
  */
 
 import { INotificationProvider, NotificationPayload, ProviderMetadata } from '../INotificationProvider';
+import { getEventMeta, type NotificationSeverity } from '@/lib/constants/notification-events';
 
 export interface AppriseConfig {
   serverUrl: string;
@@ -13,12 +14,12 @@ export interface AppriseConfig {
   authToken?: string;
 }
 
-// Apprise notification types by event
-const APPRISE_TYPES: Record<string, string> = {
-  request_pending_approval: 'info',
-  request_approved: 'success',
-  request_available: 'success',
-  request_error: 'failure',
+// Apprise notification types by severity
+const SEVERITY_TYPES: Record<NotificationSeverity, string> = {
+  info: 'info',
+  success: 'success',
+  error: 'failure',
+  warning: 'warning',
 };
 
 export class AppriseProvider implements INotificationProvider {
@@ -41,10 +42,11 @@ export class AppriseProvider implements INotificationProvider {
 
   async send(config: Record<string, any>, payload: NotificationPayload): Promise<void> {
     const appriseConfig = config as unknown as AppriseConfig;
+    const meta = getEventMeta(payload.event);
     const { title, body } = this.formatMessage(payload);
 
     const serverUrl = appriseConfig.serverUrl.replace(/\/+$/, '');
-    const notificationType = APPRISE_TYPES[payload.event] || 'info';
+    const notificationType = SEVERITY_TYPES[meta.severity];
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -107,26 +109,21 @@ export class AppriseProvider implements INotificationProvider {
 
   private formatMessage(payload: NotificationPayload): { title: string; body: string } {
     const { event, title, author, userName, message } = payload;
+    const meta = getEventMeta(event);
 
-    const eventTitles: Record<string, string> = {
-      request_pending_approval: 'New Request Pending Approval',
-      request_approved: 'Request Approved',
-      request_available: 'Audiobook Available',
-      request_error: 'Request Error',
-    };
-
+    const isIssue = event === 'issue_reported';
     const messageLines = [
-      `📚 ${title}`,
-      `✍️ ${author}`,
-      `👤 Requested by: ${userName}`,
+      `\u{1F4DA} ${title}`,
+      `\u270D\uFE0F ${author}`,
+      `\u{1F464} ${isIssue ? 'Reported by' : 'Requested by'}: ${userName}`,
     ];
 
     if (message) {
-      messageLines.push(`⚠️ Error: ${message}`);
+      messageLines.push(isIssue ? `\u{1F4DD} Reason: ${message}` : `\u26A0\uFE0F Error: ${message}`);
     }
 
     return {
-      title: eventTitles[event],
+      title: meta.title,
       body: messageLines.join('\n'),
     };
   }
