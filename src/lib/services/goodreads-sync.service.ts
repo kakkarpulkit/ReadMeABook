@@ -289,11 +289,23 @@ async function performAudibleLookup(
   const audibleService = getAudibleService();
 
   try {
-    const searchQuery = `${book.title} ${book.author}`;
-    log.info(`Searching Audible for: "${searchQuery}"`);
+    // Try full Goodreads title first, then fall back to stripped title
+    // (Goodreads titles often include series info like "(Demonica, #2)" that return 0 Audible results)
+    const fullQuery = `${book.title} ${book.author}`;
+    log.info(`Searching Audible for: "${fullQuery}"`);
 
-    const searchResult = await audibleService.search(searchQuery);
-    const firstResult = searchResult.results[0];
+    let searchResult = await audibleService.search(fullQuery);
+    let firstResult = searchResult.results[0];
+
+    if (!firstResult?.asin) {
+      const cleanTitle = book.title.replace(/\s*\(.*\)\s*$/, '').trim();
+      if (cleanTitle !== book.title) {
+        const cleanQuery = `${cleanTitle} ${book.author}`;
+        log.info(`No results with full title, retrying without series info: "${cleanQuery}"`);
+        searchResult = await audibleService.search(cleanQuery);
+        firstResult = searchResult.results[0];
+      }
+    }
 
     if (firstResult?.asin) {
       log.info(`Audible match: "${book.title}" → ASIN ${firstResult.asin} ("${firstResult.title}" by ${firstResult.author})`);
