@@ -221,9 +221,9 @@ export async function createRequestForUser(
 
   let initialStatus: string;
   if (needsApproval) {
-    initialStatus = awaiting_approval;
+    initialStatus = 'awaiting_approval';
   } else {
-    initialStatus = awaiting_search;
+    initialStatus = 'awaiting_search';
   }
 
   // Create request
