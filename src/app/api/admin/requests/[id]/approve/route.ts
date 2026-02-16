@@ -203,22 +203,7 @@ export async function POST(
               },
             });
 
-            // Trigger appropriate search job based on request type
-            if (isEbookRequest) {
-              await jobQueue.addSearchEbookJob(updatedRequest.id, {
-                id: updatedRequest.audiobook.id,
-                title: updatedRequest.audiobook.title,
-                author: updatedRequest.audiobook.author,
-                asin: updatedRequest.audiobook.audibleAsin || undefined,
-              });
-            } else {
-              await jobQueue.addSearchJob(updatedRequest.id, {
-                id: updatedRequest.audiobook.id,
-                title: updatedRequest.audiobook.title,
-                author: updatedRequest.audiobook.author,
-                asin: updatedRequest.audiobook.audibleAsin || undefined,
-              });
-            }
+            // NOTE: auto-search disabled; admin approval stops at awaiting_search
 
             // Send notification for manual approval
             await jobQueue.addNotificationJob(
