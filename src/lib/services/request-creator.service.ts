@@ -191,7 +191,8 @@ export async function createRequestForUser(
 
   // Determine if approval is needed
   let needsApproval = false;
-  let shouldTriggerSearch = !skipAutoSearch;
+  // Manual search only: never auto-trigger search here
+  let shouldTriggerSearch = false;
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -220,12 +221,9 @@ export async function createRequestForUser(
 
   let initialStatus: string;
   if (needsApproval) {
-    initialStatus = 'awaiting_approval';
-    shouldTriggerSearch = false;
-  } else if (skipAutoSearch) {
-    initialStatus = 'awaiting_search';
+    initialStatus = awaiting_approval;
   } else {
-    initialStatus = 'pending';
+    initialStatus = awaiting_search;
   }
 
   // Create request
