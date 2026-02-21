@@ -180,7 +180,7 @@ describe('QBittorrentService', () => {
     });
   });
 
-  describe('mapState - pausedUP/stoppedUP as completion states (RDT-Client compatibility)', () => {
+  describe('mapState - pausedUP/stoppedUP as completion states', () => {
     it('maps pausedUP to completed (download finished, paused on upload side)', () => {
       const service = new QBittorrentService('http://qb', 'user', 'pass');
       const progress = service.getDownloadProgress({
@@ -254,7 +254,7 @@ describe('QBittorrentService', () => {
       expect(info!.status).toBe('seeding');
     });
 
-    it('maps pausedUP to seeding status (RDT-Client: download finished, paused on upload side)', async () => {
+    it('maps pausedUP to seeding status (download finished, paused on upload side)', async () => {
       const service = new QBittorrentService('http://qb', 'user', 'pass');
       (service as any).cookie = 'SID=pausedup';
       clientMock.get.mockResolvedValueOnce({
@@ -768,6 +768,37 @@ describe('QBittorrentService', () => {
     clientMock.get.mockResolvedValueOnce({ data: [] });
 
     await expect(service.getTorrent('hash-404')).rejects.toThrow('Torrent hash-404 not found');
+  });
+
+  it('ignores unrelated torrents returned by RDTClient-like clients that ignore hash filter', async () => {
+    const service = new QBittorrentService('http://qb', 'user', 'pass');
+    (service as any).cookie = 'SID=rdtclient';
+    // RDTClient ignores the hashes param and returns all torrents
+    clientMock.get.mockResolvedValueOnce({
+      data: [
+        { hash: 'aaaa1111bbbb2222cccc3333dddd4444eeee5555', name: 'Other Book' },
+        { hash: 'ffff6666aaaa7777bbbb8888cccc9999dddd0000', name: 'Another Book' },
+      ],
+    });
+
+    await expect(
+      service.getTorrent('0f54898dc1b8e49d96e32827377f651ea6c935af')
+    ).rejects.toThrow('Torrent 0f54898dc1b8e49d96e32827377f651ea6c935af not found');
+  });
+
+  it('finds the correct torrent when RDTClient returns all torrents including the match', async () => {
+    const service = new QBittorrentService('http://qb', 'user', 'pass');
+    (service as any).cookie = 'SID=rdtclient2';
+    clientMock.get.mockResolvedValueOnce({
+      data: [
+        { hash: 'aaaa1111bbbb2222cccc3333dddd4444eeee5555', name: 'Other Book' },
+        { hash: '0F54898DC1B8E49D96E32827377F651EA6C935AF', name: 'Target Book' },
+      ],
+    });
+
+    const result = await service.getTorrent('0f54898dc1b8e49d96e32827377f651ea6c935af');
+
+    expect(result.name).toBe('Target Book');
   });
 
   it('returns error when getTorrents fails', async () => {

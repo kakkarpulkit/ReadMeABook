@@ -158,9 +158,9 @@ describe('AdminUsersPage', () => {
 
     render(<AdminUsersPage />);
 
-    expect(await screen.findByText('Full Access')).toBeDefined();
-    expect(screen.getByText('Manual')).toBeDefined();
-    expect(screen.getByText('Auto-Approve')).toBeDefined();
+    expect((await screen.findAllByText('Full Access'))[0]).toBeDefined();
+    expect(screen.getAllByText('Manual')[0]).toBeDefined();
+    expect(screen.getAllByText('Auto-Approve')[0]).toBeDefined();
   });
 
   it('shows Global Default badge when global auto-approve is on', async () => {
@@ -171,7 +171,7 @@ describe('AdminUsersPage', () => {
 
     render(<AdminUsersPage />);
 
-    expect(await screen.findByText('Global Default')).toBeDefined();
+    expect((await screen.findAllByText('Global Default'))[0]).toBeDefined();
   });
 
   it('opens user permissions modal and shows admin lock state for both permissions', async () => {
@@ -184,7 +184,7 @@ describe('AdminUsersPage', () => {
     render(<AdminUsersPage />);
 
     // Click the permissions badge to open modal
-    fireEvent.click(await screen.findByText('Full Access'));
+    fireEvent.click((await screen.findAllByText('Full Access'))[0]);
 
     // Modal should show user info and the locked state for both permissions
     expect(await screen.findByText('User Permissions')).toBeDefined();
@@ -205,7 +205,7 @@ describe('AdminUsersPage', () => {
     render(<AdminUsersPage />);
 
     // Click the Manual badge to open permissions modal
-    fireEvent.click(await screen.findByText('Manual'));
+    fireEvent.click((await screen.findAllByText('Manual'))[0]);
 
     // Find and click the auto-approve toggle switch inside the modal
     const toggle = await screen.findByRole('switch', { name: 'Auto-Approve Requests' });
@@ -231,7 +231,7 @@ describe('AdminUsersPage', () => {
     render(<AdminUsersPage />);
 
     // Click the Manual badge to open permissions modal
-    fireEvent.click(await screen.findByText('Manual'));
+    fireEvent.click((await screen.findAllByText('Manual'))[0]);
 
     // Find and click the interactive search toggle switch inside the modal
     const toggle = await screen.findByRole('switch', { name: 'Interactive Search Access' });
@@ -255,7 +255,7 @@ describe('AdminUsersPage', () => {
     render(<AdminUsersPage />);
 
     // Click the Global Default badge
-    fireEvent.click(await screen.findByText('Global Default'));
+    fireEvent.click((await screen.findAllByText('Global Default'))[0]);
 
     // Modal should show the global override message for both
     expect(await screen.findByText('Controlled by global auto-approve setting')).toBeDefined();
@@ -288,7 +288,7 @@ describe('AdminUsersPage', () => {
 
     render(<AdminUsersPage />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit Role' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Edit Role' }))[0]);
     fireEvent.click(screen.getByRole('radio', { name: /Admin/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 

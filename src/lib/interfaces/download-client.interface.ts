@@ -11,7 +11,7 @@
 // =========================================================================
 
 /** Supported download client types — single source of truth */
-export const SUPPORTED_CLIENT_TYPES = ['qbittorrent', 'sabnzbd', 'nzbget', 'transmission', 'rdtclient'] as const;
+export const SUPPORTED_CLIENT_TYPES = ['qbittorrent', 'sabnzbd', 'nzbget', 'transmission', 'deluge'] as const;
 
 /** Identifies the specific download client software */
 export type DownloadClientType = (typeof SUPPORTED_CLIENT_TYPES)[number];
@@ -22,7 +22,7 @@ export const CLIENT_DISPLAY_NAMES: Record<DownloadClientType, string> = {
   sabnzbd: 'SABnzbd',
   nzbget: 'NZBGet',
   transmission: 'Transmission',
-  rdtclient: 'RDT-Client',
+  deluge: 'Deluge',
 };
 
 /** Get display name for a client type, falling back to the raw type */
@@ -39,7 +39,7 @@ export const CLIENT_PROTOCOL_MAP: Record<DownloadClientType, ProtocolType> = {
   sabnzbd: 'usenet',
   nzbget: 'usenet',
   transmission: 'torrent',
-  rdtclient: 'torrent',
+  deluge: 'torrent',
 };
 
 /** Unified download status across all clients */

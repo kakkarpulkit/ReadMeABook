@@ -41,6 +41,144 @@ interface PendingUser {
   createdAt: string;
 }
 
+// Tinted-dot status badge following admin design system
+function RoleBadge({ role, isSetupAdmin }: { role: 'user' | 'admin'; isSetupAdmin: boolean }) {
+  if (isSetupAdmin) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-700 dark:text-blue-400">
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-blue-500" />
+        Setup Admin
+      </span>
+    );
+  }
+  if (role === 'admin') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-500/10 text-purple-700 dark:text-purple-400">
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-purple-500" />
+        Admin
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-500/10 text-gray-600 dark:text-gray-400">
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-gray-400" />
+      User
+    </span>
+  );
+}
+
+function PermissionBadge({
+  user,
+  globalAutoApprove,
+  onClick,
+}: {
+  user: User;
+  globalAutoApprove: boolean;
+  onClick: () => void;
+}) {
+  let badge: React.ReactNode;
+  if (user.role === 'admin') {
+    badge = (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-purple-500/10 text-purple-700 dark:text-purple-400">
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+        Full Access
+      </span>
+    );
+  } else if (globalAutoApprove) {
+    badge = (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400">
+        Global Default
+      </span>
+    );
+  } else if (user.autoApproveRequests ?? false) {
+    badge = (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+        Auto-Approve
+      </span>
+    );
+  } else {
+    badge = (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-gray-500/10 text-gray-600 dark:text-gray-400">
+        Manual
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 text-sm transition-opacity hover:opacity-70"
+    >
+      {badge}
+      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
+    </button>
+  );
+}
+
+function UserActionsCell({ user, onEdit, onDelete }: { user: User; onEdit: (u: User) => void; onDelete: (u: User) => void }) {
+  if (user.isSetupAdmin) {
+    return (
+      <span className="inline-flex items-center gap-1 text-gray-400 dark:text-gray-600 cursor-not-allowed" title="Setup admin role cannot be changed">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+        <span>Protected</span>
+      </span>
+    );
+  }
+  if (user.authProvider === 'oidc') {
+    return (
+      <span className="inline-flex items-center gap-1 text-gray-400 dark:text-gray-600 cursor-not-allowed" title="OIDC user roles are managed by the identity provider">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>OIDC Managed</span>
+      </span>
+    );
+  }
+  if (user.authProvider === 'local') {
+    return (
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => onEdit(user)}
+          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          <span>Edit Role</span>
+        </button>
+        <button
+          onClick={() => onDelete(user)}
+          className="inline-flex items-center gap-1 text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+          title="Delete user and all their requests"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          <span>Delete</span>
+        </button>
+      </div>
+    );
+  }
+  // plex or other
+  return (
+    <button
+      onClick={() => onEdit(user)}
+      className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+    >
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+      </svg>
+      <span>Edit Role</span>
+    </button>
+  );
+}
+
 function AdminUsersPageContent() {
   const { data, error, mutate } = useSWR('/api/admin/users', authenticatedFetcher);
   const { data: pendingData, error: pendingError, mutate: mutatePending } = useSWR(
@@ -86,7 +224,6 @@ function AdminUsersPageContent() {
     if (globalAutoApproveData?.autoApproveRequests !== undefined) {
       setGlobalAutoApprove(globalAutoApproveData.autoApproveRequests);
     } else if (globalAutoApproveData !== undefined && globalAutoApproveData.autoApproveRequests === undefined) {
-      // API returned but no value - default to true
       setGlobalAutoApprove(true);
     }
   }, [globalAutoApproveData]);
@@ -101,9 +238,7 @@ function AdminUsersPageContent() {
   }, [globalInteractiveSearchData]);
 
   const handleGlobalAutoApproveToggle = async (newValue: boolean) => {
-    // Optimistic update
     setGlobalAutoApprove(newValue);
-
     try {
       await fetchJSON('/api/admin/settings/auto-approve', {
         method: 'PATCH',
@@ -111,20 +246,16 @@ function AdminUsersPageContent() {
       });
       toast.success(`Global auto-approve ${newValue ? 'enabled' : 'disabled'}`);
       mutateGlobalAutoApprove();
-      mutate(); // Refresh users list to show updated state
+      mutate();
     } catch (err) {
-      // Revert on error
       setGlobalAutoApprove(!newValue);
       const errorMsg = err instanceof Error ? err.message : 'Failed to update auto-approve setting';
       toast.error(errorMsg);
-      console.error(err);
     }
   };
 
   const handleGlobalInteractiveSearchToggle = async (newValue: boolean) => {
-    // Optimistic update
     setGlobalInteractiveSearch(newValue);
-
     try {
       await fetchJSON('/api/admin/settings/interactive-search', {
         method: 'PATCH',
@@ -132,74 +263,51 @@ function AdminUsersPageContent() {
       });
       toast.success(`Global interactive search ${newValue ? 'enabled' : 'disabled'}`);
       mutateGlobalInteractiveSearch();
-      mutate(); // Refresh users list to show updated state
+      mutate();
     } catch (err) {
-      // Revert on error
       setGlobalInteractiveSearch(!newValue);
       const errorMsg = err instanceof Error ? err.message : 'Failed to update interactive search setting';
       toast.error(errorMsg);
-      console.error(err);
     }
   };
 
   const handleUserAutoApproveToggle = async (user: User, newValue: boolean) => {
-    console.log('[AutoApprove] Toggle clicked:', { userId: user.id, username: user.plexUsername, newValue });
-
-    // Optimistic update
     const previousUsers = data?.users || [];
     const optimisticUsers = previousUsers.map((u: User) =>
       u.id === user.id ? { ...u, autoApproveRequests: newValue } : u
     );
-    console.log('[AutoApprove] Applying optimistic update');
     mutate({ users: optimisticUsers }, false);
-
     try {
-      console.log('[AutoApprove] Sending API request...');
-      const response = await fetchJSON(`/api/admin/users/${user.id}`, {
+      await fetchJSON(`/api/admin/users/${user.id}`, {
         method: 'PUT',
-        body: JSON.stringify({
-          role: user.role,
-          autoApproveRequests: newValue
-        }),
+        body: JSON.stringify({ role: user.role, autoApproveRequests: newValue }),
       });
-      console.log('[AutoApprove] API response received:', response);
       toast.success(`Auto-approve ${newValue ? 'enabled' : 'disabled'} for ${user.plexUsername}`);
-      console.log('[AutoApprove] Triggering cache revalidation...');
-      mutate(); // Refresh users list
+      mutate();
     } catch (err) {
-      // Revert on error
-      console.error('[AutoApprove] Error occurred, reverting:', err);
       mutate({ users: previousUsers }, false);
       const errorMsg = err instanceof Error ? err.message : 'Failed to update user auto-approve setting';
       toast.error(errorMsg);
-      console.error(err);
     }
   };
 
   const handleUserInteractiveSearchToggle = async (user: User, newValue: boolean) => {
-    // Optimistic update
     const previousUsers = data?.users || [];
     const optimisticUsers = previousUsers.map((u: User) =>
       u.id === user.id ? { ...u, interactiveSearchAccess: newValue } : u
     );
     mutate({ users: optimisticUsers }, false);
-
     try {
       await fetchJSON(`/api/admin/users/${user.id}`, {
         method: 'PUT',
-        body: JSON.stringify({
-          role: user.role,
-          interactiveSearchAccess: newValue
-        }),
+        body: JSON.stringify({ role: user.role, interactiveSearchAccess: newValue }),
       });
       toast.success(`Interactive search ${newValue ? 'enabled' : 'disabled'} for ${user.plexUsername}`);
-      mutate(); // Refresh users list
+      mutate();
     } catch (err) {
-      // Revert on error
       mutate({ users: previousUsers }, false);
       const errorMsg = err instanceof Error ? err.message : 'Failed to update user interactive search setting';
       toast.error(errorMsg);
-      console.error(err);
     }
   };
 
@@ -214,7 +322,6 @@ function AdminUsersPageContent() {
 
   const saveUserRole = async () => {
     if (!editDialog.user) return;
-
     try {
       setSaving(true);
       await fetchJSON(`/api/admin/users/${editDialog.user.id}`, {
@@ -223,11 +330,10 @@ function AdminUsersPageContent() {
       });
       toast.success(`User "${editDialog.user.plexUsername}" updated successfully`);
       hideEditDialog();
-      mutate(); // Refresh users list
+      mutate();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to update user';
       toast.error(errorMsg);
-      console.error(err);
     } finally {
       setSaving(false);
     }
@@ -242,13 +348,12 @@ function AdminUsersPageContent() {
   };
 
   const closeConfirmDialog = () => {
-    if (processingUserId) return; // Don't close while processing
+    if (processingUserId) return;
     setConfirmDialog({ isOpen: false, type: null, user: null });
   };
 
   const handleConfirmAction = async () => {
     if (!confirmDialog.user) return;
-
     const isApprove = confirmDialog.type === 'approve';
     try {
       setProcessingUserId(confirmDialog.user.id);
@@ -261,13 +366,12 @@ function AdminUsersPageContent() {
           ? `User "${confirmDialog.user.plexUsername}" has been approved`
           : `User "${confirmDialog.user.plexUsername}" has been rejected`
       );
-      mutatePending(); // Refresh pending users list
-      if (isApprove) mutate(); // Refresh approved users list
+      mutatePending();
+      if (isApprove) mutate();
       closeConfirmDialog();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : `Failed to ${isApprove ? 'approve' : 'reject'} user`;
       toast.error(errorMsg);
-      console.error(err);
     } finally {
       setProcessingUserId(null);
     }
@@ -278,25 +382,23 @@ function AdminUsersPageContent() {
   };
 
   const closeDeleteDialog = () => {
-    if (deleting) return; // Don't close while processing
+    if (deleting) return;
     setDeleteDialog({ isOpen: false, user: null });
   };
 
   const handleDeleteUser = async () => {
     if (!deleteDialog.user) return;
-
     try {
       setDeleting(true);
       const response = await fetchJSON(`/api/admin/users/${deleteDialog.user.id}`, {
         method: 'DELETE',
       });
       toast.success(response.message || `User "${deleteDialog.user.plexUsername}" has been deleted`);
-      mutate(); // Refresh users list
+      mutate();
       closeDeleteDialog();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to delete user';
       toast.error(errorMsg);
-      console.error(err);
     } finally {
       setDeleting(false);
     }
@@ -307,7 +409,6 @@ function AdminUsersPageContent() {
       await navigator.clipboard.writeText(text);
       toast.success(`${label} copied to clipboard`);
     } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
       toast.error('Failed to copy to clipboard');
     }
   };
@@ -327,9 +428,7 @@ function AdminUsersPageContent() {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
         <div className="max-w-7xl mx-auto">
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-              Error Loading Users
-            </h3>
+            <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error Loading Users</h3>
             <p className="text-sm text-red-700 dark:text-red-300 mt-1">
               {error?.message || 'Failed to load users'}
             </p>
@@ -344,80 +443,81 @@ function AdminUsersPageContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="sticky top-0 z-10 mb-8 flex items-center justify-between bg-gray-50 dark:bg-gray-900 py-4 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-b border-gray-200 dark:border-gray-800">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-              User Management
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
-              Manage user roles and permissions
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setGlobalSettingsOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span>Global User Permissions</span>
-            </button>
-            <Link
-              href="/admin"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded-lg transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              <span>Back to Dashboard</span>
-            </Link>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+
+        {/* Header — stacks on mobile, row on sm+ */}
+        <div className="sticky top-0 z-10 mb-6 sm:mb-8 bg-gray-50 dark:bg-gray-900 py-4 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
+                User Management
+              </h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                Manage user roles and permissions
+              </p>
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-auto flex-shrink-0">
+              <button
+                onClick={() => setGlobalSettingsOpen(true)}
+                className="inline-flex items-center gap-2 px-3 sm:px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="hidden sm:inline">Global User Permissions</span>
+                <span className="sm:hidden">Permissions</span>
+              </button>
+              <Link
+                href="/admin"
+                className="inline-flex items-center gap-2 px-3 sm:px-4 py-2.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded-lg transition-colors text-sm font-medium"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                <span>Back</span>
+              </Link>
+            </div>
           </div>
         </div>
 
         {/* Pending Users Section */}
         {pendingUsers.length > 0 && (
-          <div className="mb-8">
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-4">
-              <h2 className="text-lg font-semibold text-yellow-900 dark:text-yellow-200 mb-4 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="mb-6 sm:mb-8">
+            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/60 rounded-xl p-4">
+              <h2 className="text-base font-semibold text-amber-900 dark:text-amber-200 mb-1 flex items-center gap-2">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 Pending Registrations ({pendingUsers.length})
               </h2>
-              <p className="text-sm text-yellow-800 dark:text-yellow-300 mb-4">
+              <p className="text-xs text-amber-700 dark:text-amber-300/80 mb-4">
                 The following users are awaiting approval to access the system.
               </p>
               <div className="space-y-3">
                 {pendingUsers.map((user) => (
                   <div
                     key={user.id}
-                    className="bg-white dark:bg-gray-800 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 flex items-center justify-between"
+                    className="bg-white dark:bg-gray-800 border border-amber-200 dark:border-amber-800/40 rounded-xl overflow-hidden"
                   >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <div className="font-medium text-gray-900 dark:text-gray-100">
-                            {user.plexUsername}
-                          </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
-                            {user.plexEmail || 'No email'}
-                          </div>
-                          <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                            Registered: {new Date(user.createdAt).toLocaleString()} •
-                            Provider: {user.authProvider}
-                          </div>
-                        </div>
+                    {/* Pending card — info */}
+                    <div className="px-4 py-3">
+                      <div className="font-medium text-gray-900 dark:text-gray-100 text-sm">
+                        {user.plexUsername}
+                      </div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                        {user.plexEmail || 'No email'}
+                      </div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                        Registered: {new Date(user.createdAt).toLocaleString()} &middot; Provider: {user.authProvider}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    {/* Pending card — actions, full-width on mobile */}
+                    <div className="px-4 py-3 border-t border-amber-100 dark:border-amber-800/30 flex gap-2">
                       <button
                         onClick={() => showApproveDialog(user)}
                         disabled={processingUserId === user.id}
-                        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-500/20 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -427,7 +527,7 @@ function AdminUsersPageContent() {
                       <button
                         onClick={() => showRejectDialog(user)}
                         disabled={processingUserId === user.id}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-700 dark:text-red-400 border border-red-200/60 dark:border-red-500/20 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -442,8 +542,104 @@ function AdminUsersPageContent() {
           </div>
         )}
 
-        {/* Users Table */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+        {/* Users — Mobile card list (sm:hidden) */}
+        <div className="space-y-3 sm:hidden">
+          {users.map((user) => (
+            <div
+              key={user.id}
+              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+            >
+              {/* Card header — avatar + name + role badge */}
+              <div className="px-4 py-3 flex items-start gap-3">
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.plexUsername}
+                    className="h-10 w-10 rounded-full flex-shrink-0 mt-0.5"
+                  />
+                ) : (
+                  <div className="h-10 w-10 rounded-full flex-shrink-0 mt-0.5 bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm leading-snug truncate">
+                      {user.plexUsername}
+                    </div>
+                    <RoleBadge role={user.role} isSetupAdmin={user.isSetupAdmin} />
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                    {user.plexEmail || 'No email'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Card body — labeled fields */}
+              <div className="px-4 pb-3 pt-2 space-y-2 border-t border-gray-100 dark:border-gray-700/60">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5">
+                      Permissions
+                    </div>
+                    <PermissionBadge
+                      user={user}
+                      globalAutoApprove={globalAutoApprove}
+                      onClick={() => setPermissionsUserId(user.id)}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5">
+                      Requests
+                    </div>
+                    <div className="text-sm text-gray-900 dark:text-gray-100">
+                      {user._count.requests}
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5">
+                    Last Login
+                  </div>
+                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                    {user.lastLoginAt
+                      ? new Date(user.lastLoginAt).toLocaleDateString()
+                      : 'Never'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5">
+                    User ID
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(user.plexId, 'User ID')}
+                    className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors inline-flex items-center gap-1"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    {user.plexId.length > 16 ? `${user.plexId.substring(0, 16)}…` : user.plexId}
+                  </button>
+                </div>
+              </div>
+
+              {/* Card actions */}
+              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-700/60">
+                <UserActionsCell user={user} onEdit={showEditDialog} onDelete={showDeleteDialog} />
+              </div>
+            </div>
+          ))}
+          {users.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-gray-500 dark:text-gray-400">No users found</p>
+            </div>
+          )}
+        </div>
+
+        {/* Users Table — hidden on mobile, visible on sm+ */}
+        <div className="hidden sm:block bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
@@ -472,15 +668,21 @@ function AdminUsersPageContent() {
             </thead>
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {users.map((user) => (
-                <tr key={user.id}>
+                <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      {user.avatarUrl && (
+                      {user.avatarUrl ? (
                         <img
                           src={user.avatarUrl}
                           alt={user.plexUsername}
-                          className="h-10 w-10 rounded-full mr-3"
+                          className="h-10 w-10 rounded-full mr-3 flex-shrink-0"
                         />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full mr-3 flex-shrink-0 bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
                       )}
                       <div>
                         <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -507,52 +709,14 @@ function AdminUsersPageContent() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          user.role === 'admin'
-                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
-                            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-400'
-                        }`}
-                      >
-                        {user.role.toUpperCase()}
-                      </span>
-                      {user.isSetupAdmin && (
-                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
-                          SETUP ADMIN
-                        </span>
-                      )}
-                    </div>
+                    <RoleBadge role={user.role} isSetupAdmin={user.isSetupAdmin} />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <button
+                    <PermissionBadge
+                      user={user}
+                      globalAutoApprove={globalAutoApprove}
                       onClick={() => setPermissionsUserId(user.id)}
-                      className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-                    >
-                      {user.role === 'admin' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                          </svg>
-                          Full Access
-                        </span>
-                      ) : globalAutoApprove ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                          Global Default
-                        </span>
-                      ) : (user.autoApproveRequests ?? false) ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                          Auto-Approve
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
-                          Manual
-                        </span>
-                      )}
-                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
+                    />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                     {user._count.requests}
@@ -563,65 +727,7 @@ function AdminUsersPageContent() {
                       : 'Never'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex items-center justify-end gap-3">
-                      {user.isSetupAdmin ? (
-                        <span className="inline-flex items-center gap-1 text-gray-400 dark:text-gray-600 cursor-not-allowed" title="Setup admin role cannot be changed">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                          </svg>
-                          <span>Protected</span>
-                        </span>
-                      ) : user.authProvider === 'oidc' ? (
-                        <span className="inline-flex items-center gap-1 text-gray-400 dark:text-gray-600 cursor-not-allowed" title="OIDC user roles are managed by the identity provider (use admin role mapping in settings)">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>OIDC Managed</span>
-                        </span>
-                      ) : user.authProvider === 'plex' ? (
-                        <button
-                          onClick={() => showEditDialog(user)}
-                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          <span>Edit Role</span>
-                        </button>
-                      ) : user.authProvider === 'local' ? (
-                        <>
-                          <button
-                            onClick={() => showEditDialog(user)}
-                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            <span>Edit Role</span>
-                          </button>
-                          <button
-                            onClick={() => showDeleteDialog(user)}
-                            className="inline-flex items-center gap-1 text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                            title="Delete user and all their requests"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            <span>Delete</span>
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => showEditDialog(user)}
-                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          <span>Edit Role</span>
-                        </button>
-                      )}
-                    </div>
+                    <UserActionsCell user={user} onEdit={showEditDialog} onDelete={showDeleteDialog} />
                   </td>
                 </tr>
               ))}
@@ -643,31 +749,50 @@ function AdminUsersPageContent() {
           <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
             <li>• <strong>User:</strong> Can request audiobooks, view own requests, and search the catalog</li>
             <li>• <strong>Admin:</strong> Full system access including settings, user management, and all requests</li>
-            <li>• <strong>Setup Admin:</strong> The initial admin account created during setup - this account is protected and cannot be changed or deleted</li>
-            <li>• <strong>Permissions:</strong> Click a user&apos;s permission badge to manage individual settings (auto-approve, interactive search). Use Global User Permissions to control system-wide defaults. Admins always have full access.</li>
-            <li>• <strong>OIDC Users:</strong> Role management is handled by the identity provider - use admin role mapping in OIDC settings. Cannot be deleted as access is managed externally.</li>
-            <li>• <strong>Plex Users:</strong> Can have their roles changed, but cannot be deleted as access is managed by Plex.</li>
-            <li>• <strong>Local Users:</strong> Can be freely assigned user or admin roles (except setup admin). Can be deleted (their requests are preserved for historical records).</li>
+            <li>• <strong>Setup Admin:</strong> The initial admin account — protected, cannot be changed or deleted</li>
+            <li>• <strong>Permissions:</strong> Click a user&apos;s permission badge to manage individual settings. Use Global User Permissions for system-wide defaults. Admins always have full access.</li>
+            <li>• <strong>OIDC Users:</strong> Role management is handled by the identity provider. Cannot be deleted.</li>
+            <li>• <strong>Plex Users:</strong> Role can be changed, but cannot be deleted (access managed by Plex).</li>
+            <li>• <strong>Local Users:</strong> Can have roles freely assigned. Can be deleted (requests are preserved).</li>
             <li>• You cannot change your own role or delete yourself for security reasons</li>
           </ul>
         </div>
 
-        {/* Edit User Dialog */}
+        {/* Edit User Dialog — bottom sheet on mobile */}
         {editDialog.isOpen && editDialog.user && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                Edit User Role
-              </h3>
-              <div className="space-y-4 mb-6">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black bg-opacity-50 p-0 sm:p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md">
+              {/* Dialog header */}
+              <div className="sticky top-0 bg-white dark:bg-gray-800 px-5 py-4 border-b border-gray-200 dark:border-gray-700 rounded-t-2xl flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  Edit User Role
+                </h3>
+                <button
+                  onClick={hideEditDialog}
+                  className="p-2 -mr-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  aria-label="Close dialog"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="px-5 py-5 space-y-4">
                 {/* User Info */}
-                <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  {editDialog.user.avatarUrl && (
+                <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                  {editDialog.user.avatarUrl ? (
                     <img
                       src={editDialog.user.avatarUrl}
                       alt={editDialog.user.plexUsername}
-                      className="h-12 w-12 rounded-full"
+                      className="h-12 w-12 rounded-full flex-shrink-0"
                     />
+                  ) : (
+                    <div className="h-12 w-12 rounded-full flex-shrink-0 bg-gray-200 dark:bg-gray-600 flex items-center justify-center">
+                      <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
                   )}
                   <div>
                     <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -685,38 +810,34 @@ function AdminUsersPageContent() {
                     Role
                   </label>
                   <div className="space-y-2">
-                    <label className="flex items-start gap-3 p-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                    <label className="flex items-start gap-3 p-3 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors">
                       <input
                         type="radio"
                         name="role"
                         value="user"
                         checked={editRole === 'user'}
                         onChange={(e) => setEditRole(e.target.value as 'user' | 'admin')}
-                        className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600"
+                        className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 flex-shrink-0"
                       />
                       <div className="flex-1">
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          User
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">User</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                           Can request audiobooks and view own requests
                         </div>
                       </div>
                     </label>
-                    <label className="flex items-start gap-3 p-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                    <label className="flex items-start gap-3 p-3 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors">
                       <input
                         type="radio"
                         name="role"
                         value="admin"
                         checked={editRole === 'admin'}
                         onChange={(e) => setEditRole(e.target.value as 'user' | 'admin')}
-                        className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600"
+                        className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 flex-shrink-0"
                       />
                       <div className="flex-1">
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          Admin
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Admin</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                           Full system access including settings and user management
                         </div>
                       </div>
@@ -725,19 +846,19 @@ function AdminUsersPageContent() {
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex justify-end gap-3">
+              {/* Dialog footer */}
+              <div className="sticky bottom-0 bg-white dark:bg-gray-800 px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex gap-3">
                 <button
                   onClick={hideEditDialog}
                   disabled={saving}
-                  className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-2.5 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={saveUserRole}
                   disabled={saving}
-                  className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>

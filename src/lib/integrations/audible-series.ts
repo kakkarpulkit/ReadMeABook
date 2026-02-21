@@ -414,10 +414,12 @@ function parseSeriesBooks(
     if (!bookAsin || seenAsins.has(bookAsin)) return;
     seenAsins.add(bookAsin);
 
-    // Title
-    const title = $el.find('h2').first().text().trim() ||
-      $el.find('h3 a').first().text().trim() ||
+    // Title: h3 a / .bc-heading a hold the real book title;
+    // h2 on series pages is the position label ("Book 1"), so try it last.
+    const title = $el.find('h3 a').first().text().trim() ||
       $el.find('.bc-heading a').first().text().trim() ||
+      $el.find('h2 a').first().text().trim() ||
+      $el.find('h2').first().text().trim() ||
       '';
 
     if (!title) return;

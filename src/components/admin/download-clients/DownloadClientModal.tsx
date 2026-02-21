@@ -278,7 +278,7 @@ export function DownloadClientModal({
         type,
         name,
         url,
-        username: type !== 'sabnzbd' ? username : undefined,
+        username: type !== 'sabnzbd' && type !== 'deluge' ? username : undefined,
         password: password === '********' ? undefined : password, // Don't send masked password on edit
         enabled,
         disableSSLVerify,
@@ -338,7 +338,7 @@ export function DownloadClientModal({
           <Input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder={type === 'rdtclient' ? 'http://localhost:6500' : type === 'transmission' ? 'http://localhost:9091' : type === 'qbittorrent' ? 'http://localhost:8080' : type === 'nzbget' ? 'http://localhost:6789' : 'http://localhost:8081'}
+            placeholder={type === 'transmission' ? 'http://localhost:9091' : type === 'qbittorrent' ? 'http://localhost:8080' : type === 'deluge' ? 'http://localhost:8112' : type === 'nzbget' ? 'http://localhost:6789' : 'http://localhost:8081'}
             error={errors.url}
           />
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -346,8 +346,8 @@ export function DownloadClientModal({
           </p>
         </div>
 
-        {/* Username (qBittorrent and Transmission) */}
-        {type !== 'sabnzbd' && (
+        {/* Username (qBittorrent, Transmission, NZBGet — not SABnzbd or Deluge) */}
+        {type !== 'sabnzbd' && type !== 'deluge' && (
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Username
@@ -381,6 +381,11 @@ export function DownloadClientModal({
           {type === 'nzbget' && (
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Configured in NZBGet under Settings → Security → ControlPassword
+            </p>
+          )}
+          {type === 'deluge' && (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Web UI password configured in Deluge under Preferences → Interface
             </p>
           )}
         </div>
@@ -448,7 +453,7 @@ export function DownloadClientModal({
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Post-Import Category
             </label>
-            {type === 'qbittorrent' && availableCategories.length > 0 ? (
+            {(type === 'qbittorrent' || type === 'deluge') && availableCategories.length > 0 ? (
               <select
                 value={postImportCategory}
                 onChange={(e) => setPostImportCategory(e.target.value)}

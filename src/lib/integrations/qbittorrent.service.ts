@@ -586,7 +586,19 @@ export class QBittorrentService implements IDownloadClient {
         throw new Error(`Torrent ${hash} not found`);
       }
 
-      return torrents[0];
+      // Find the torrent with the exact matching hash.
+      // Some qBittorrent-compatible clients (e.g. RDTClient) ignore the hashes
+      // filter and return all torrents, so we must verify the hash ourselves.
+      const normalizedHash = hash.toLowerCase();
+      const match = torrents.find(
+        (t: TorrentInfo) => t.hash?.toLowerCase() === normalizedHash
+      );
+
+      if (!match) {
+        throw new Error(`Torrent ${hash} not found`);
+      }
+
+      return match;
     } catch (error) {
       // Don't log error here - caller handles it (e.g., duplicate checking)
       throw error;
@@ -1103,7 +1115,7 @@ export class QBittorrentService implements IDownloadClient {
       stalledDL: 'downloading',
       stalledUP: 'seeding',
       pausedDL: 'paused',
-      // pausedUP = download finished, paused on upload side (e.g. RDT-Client, ratio met)
+      // pausedUP = download finished, paused on upload side (e.g. ratio met)
       pausedUP: 'seeding',
       queuedDL: 'queued',
       queuedUP: 'seeding',
@@ -1158,7 +1170,7 @@ export class QBittorrentService implements IDownloadClient {
       stalledDL: 'downloading',
       stalledUP: 'completed',
       pausedDL: 'paused',
-      // pausedUP = download finished, paused on upload side (e.g. RDT-Client, ratio met)
+      // pausedUP = download finished, paused on upload side (e.g. ratio met)
       pausedUP: 'completed',
       queuedDL: 'queued',
       queuedUP: 'completed',

@@ -343,9 +343,9 @@ describe('processMonitorDownload', () => {
       requestId: 'req-6',
       downloadHistoryId: 'dh-6',
       downloadClientId: 'id-6',
-      downloadClient: 'deluge',
+      downloadClient: 'rtorrent',
       jobId: 'job-6',
-    })).rejects.toThrow(/Unknown download client type: deluge/);
+    })).rejects.toThrow(/Unknown download client type: rtorrent/);
 
     expect(prismaMock.request.update).toHaveBeenCalledWith(
       expect.objectContaining({

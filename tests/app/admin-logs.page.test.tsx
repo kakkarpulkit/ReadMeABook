@@ -68,14 +68,14 @@ describe('AdminLogsPage', () => {
     render(<AdminLogsPage />);
 
     expect(await screen.findByText('System Logs')).toBeInTheDocument();
-    expect(screen.getByText('Search Book')).toBeInTheDocument();
+    expect(screen.getAllByText('Search Book')[0]).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show Details' }));
-    expect(screen.getByText('Event Log')).toBeInTheDocument();
-    expect(screen.getByText('Job Result')).toBeInTheDocument();
-    expect(screen.getByText('Error')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Show Details' })[0]);
+    expect(screen.getAllByText('Event Log')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Job Result')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Error')[0]).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide Details' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Hide Details' })[0]);
     expect(screen.queryByText('Event Log')).not.toBeInTheDocument();
   });
 
@@ -122,6 +122,6 @@ describe('AdminLogsPage', () => {
 
     render(<AdminLogsPage />);
 
-    expect(await screen.findByText('No logs found')).toBeInTheDocument();
+    expect((await screen.findAllByText('No logs found'))[0]).toBeInTheDocument();
   });
 });

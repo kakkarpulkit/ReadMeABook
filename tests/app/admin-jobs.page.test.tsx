@@ -55,9 +55,9 @@ describe('AdminJobsPage', () => {
 
     render(<AdminJobsPage />);
 
-    expect(await screen.findByText('Library Scan')).toBeInTheDocument();
+    expect((await screen.findAllByText('Library Scan'))[0]).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Trigger Now/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /Trigger Now/i })[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Trigger Job' }));
 
     await waitFor(() => {
@@ -88,7 +88,7 @@ describe('AdminJobsPage', () => {
 
     render(<AdminJobsPage />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Edit' }))[0]);
     fireEvent.click(screen.getByRole('radio', { name: /Every 2 hours/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 

@@ -152,8 +152,8 @@ describe('Admin settings core routes', () => {
   it('rejects invalid download client types', async () => {
     const request = {
       json: vi.fn().mockResolvedValue({
-        type: 'deluge',
-        url: 'http://deluge',
+        type: 'rtorrent',
+        url: 'http://rtorrent',
       }),
     };
 

@@ -2,7 +2,7 @@
  * Component: Download Client Manager Service
  * Documentation: documentation/phase3/download-clients.md
  *
- * Manages multiple download clients (qBittorrent, Transmission, SABnzbd, NZBGet) with protocol-based routing.
+ * Manages multiple download clients (qBittorrent, Transmission, Deluge, SABnzbd, NZBGet) with protocol-based routing.
  * Supports migration from legacy single-client config to multi-client JSON array format.
  */
 
@@ -16,7 +16,7 @@ import { QBittorrentService } from '@/lib/integrations/qbittorrent.service';
 import { SABnzbdService } from '@/lib/integrations/sabnzbd.service';
 import { NZBGetService } from '@/lib/integrations/nzbget.service';
 import { TransmissionService } from '@/lib/integrations/transmission.service';
-import { RDTClientService } from '@/lib/integrations/rdtclient.service';
+import { DelugeService } from '@/lib/integrations/deluge.service';
 import { PathMappingConfig } from '@/lib/utils/path-mapper';
 import { IDownloadClient, DownloadClientType, ProtocolType, CLIENT_PROTOCOL_MAP, getClientDisplayName } from '@/lib/interfaces/download-client.interface';
 
@@ -194,8 +194,8 @@ export class DownloadClientManager {
         return this.createNZBGetService(config, downloadDir);
       case 'transmission':
         return this.createTransmissionService(config, downloadDir);
-      case 'rdtclient':
-        return this.createRDTClientService(config, downloadDir);
+      case 'deluge':
+        return this.createDelugeService(config, downloadDir);
       default:
         throw new Error(`Unsupported download client type: ${config.type}`);
     }
@@ -339,9 +339,9 @@ export class DownloadClientManager {
   }
 
   /**
-   * Create RDT-Client service instance (same constructor as qBittorrent — identical API)
+   * Create Deluge service instance
    */
-  private createRDTClientService(config: DownloadClientConfig, downloadDir: string): RDTClientService {
+  private createDelugeService(config: DownloadClientConfig, downloadDir: string): DelugeService {
     const pathMapping: PathMappingConfig | undefined = config.remotePathMappingEnabled && config.remotePath && config.localPath
       ? {
           enabled: true,
@@ -350,7 +350,7 @@ export class DownloadClientManager {
         }
       : undefined;
 
-    return new RDTClientService(
+    return new DelugeService(
       config.url,
       config.username || '',
       config.password || '',

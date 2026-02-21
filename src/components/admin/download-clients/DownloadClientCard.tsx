@@ -29,6 +29,7 @@ export function DownloadClientCard({ client, onEdit, onDelete }: DownloadClientC
     transmission: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
     sabnzbd: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
     nzbget: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300',
+    deluge: 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300',
   };
   const typeColor = typeColorMap[client.type] || typeColorMap.qbittorrent;
 

@@ -243,7 +243,7 @@ type TorrentState =
    - `forcedUP` → `seeding`/`completed` enables monitor to trigger import
    - `stoppedDL` → `paused` ensures qBittorrent v5.x compatibility
 
-**16. pausedUP/stoppedUP mapped as paused instead of completed** - RDT-Client (and qBittorrent after ratio limits) transitions directly to `pausedUP`/`stoppedUP` without passing through `uploading`/`stalledUP`. The `*UP` suffix means the download phase is complete and the torrent is on the upload side. Both states were incorrectly mapped to `'paused'`, causing the monitor to re-schedule checks indefinitely instead of triggering file organization. Fixed by:
+**16. pausedUP/stoppedUP mapped as paused instead of completed** - qBittorrent (after ratio limits) transitions directly to `pausedUP`/`stoppedUP` without passing through `uploading`/`stalledUP`. The `*UP` suffix means the download phase is complete and the torrent is on the upload side. Both states were incorrectly mapped to `'paused'`, causing the monitor to re-schedule checks indefinitely instead of triggering file organization. Fixed by:
    - `pausedUP` → `seeding` (unified) / `completed` (legacy) — triggers completion in monitor
    - `stoppedUP` → `seeding` (unified) / `completed` (legacy) — same fix for qBittorrent v5.x
    - `pausedDL`/`stoppedDL` remain `paused` — download phase genuinely paused

@@ -182,7 +182,7 @@ describe('Setup test routes', () => {
   it('rejects invalid download client type', async () => {
     const { POST } = await import('@/app/api/setup/test-download-client/route');
     const response = await POST({
-      json: vi.fn().mockResolvedValue({ type: 'deluge', url: 'http://deluge' }),
+      json: vi.fn().mockResolvedValue({ type: 'rtorrent', url: 'http://rtorrent' }),
     } as any);
     const payload = await response.json();
 

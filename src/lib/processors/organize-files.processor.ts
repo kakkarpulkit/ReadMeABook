@@ -865,12 +865,9 @@ async function cleanupDownloadAfterOrganize(
     });
 
     // Check if this is a non-torrent indexer with cleanup enabled.
-    // RDT-Client is an exception: even though it's torrent protocol, it needs cleanup
-    // because Real-Debrid handles seeding — local torrent entries should be removed.
-    const isRDTClient = downloadHistory.downloadClient === 'rdtclient';
     const isTorrentProtocol = indexer?.protocol?.toLowerCase() === 'torrent';
 
-    if (!indexer || (!isRDTClient && isTorrentProtocol) || !indexer.removeAfterProcessing) {
+    if (!indexer || isTorrentProtocol || !indexer.removeAfterProcessing) {
       return;
     }
 
